@@ -1,0 +1,15 @@
+[Unit]
+Description=SBox
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/etc/SBox_main
+Restart=on-failure
+RestartSec=3s
+LimitNOFILE=999999
+
+
+[Install]
+WantedBy=multi-user.target

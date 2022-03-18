@@ -1,0 +1,8 @@
+#插件名称,插件类型(app=后台应用|script=脚本),插件描述
+clash,app,clash
+zerotier,app,内网穿透，在公网上组建虚拟局域网
+subconverter,app,subconverter！
+AutoSSH,script,小米路由设备SSH固化工具
+SuperDDNS,script,增强版的DDNS脚本
+ShellDDNS,script,通过命令行简单配置DDNS服务(仅支持OpenWrt)
+ShellClash,script,ShellClash!

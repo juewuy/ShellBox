@@ -1,0 +1,207 @@
+#!/bin/sh
+# Copyright (C) Juewuy
+
+[ -n "$(ls -l /bin/sh|grep -o dash)" ] && SH=bash || SH=sh
+LOG_LV=$($0 get core.log_lv)
+
+#内置工具
+log(){
+	[ -z "$LOG_LV" ] && LOG_LV=0
+	# $3 代表崩溃日志，存放在安装目录，当LOG_LV等于2时，则一律存放
+	if [ -z "$3" -a "$LOG_LV" -lt 2 ];then
+		log_dir=/tmp/log/sbox_log
+	else
+		log_dir=$SBOX_DIR/crash_log
+		[ "$(wc -l $SBOX_DIR/crash_log | awk '{print $1}')" -gt 110 ] && sed -i '1,10d' $SBOX_DIR/crash_log
+	fi
+	# $2 代表是否向屏幕打印输出，当LOG_LV大于等于1时，则一律打印
+	[ -z "$2" ] && prnt=0 || prnt=$2
+	[ "$prnt" != 0 -o "$LOG_LV" -ge 1 ] && echo -e "\033[36m$1\033[0m"
+	echo `date "+%G-%m-%d %H:%M:%S"` "$1" >> $log_dir
+}
+croncmd(){
+	if [ -n "$(crontab -h 2>&1 | grep '\-l')" ];then
+		crontab $1
+	else
+		crondir="$(crond -h 2>&1 | grep -oE 'Default:.*' | awk -F ":" '{print $2}')"
+		[ ! -w "$crondir" ] && crondir="/etc/storage/cron/crontabs"
+		[ ! -w "$crondir" ] && crondir="/var/spool/cron/crontabs"
+		[ ! -w "$crondir" ] && crondir="/var/spool/cron"
+		[ ! -w "$crondir" ] && echo " The device does not support crontabs ！"
+		[ "$1" = "-l" ] && cat $crondir/$USER 2>/dev/null
+		[ -f "$1" ] && cat $1 > $crondir/$USER
+	fi
+}
+cronset(){
+	# 参数1代表要移除的关键字,参数2代表要添加的任务语句
+	tmpcron=/tmp/cron_$USER
+	croncmd -l > $tmpcron 
+	sed -i "/$1/d" $tmpcron
+	sed -i '/^$/d' $tmpcron
+	echo "$2" >> $tmpcron
+	croncmd $tmpcron
+	rm -rf $tmpcron
+}
+set(){
+	#set main.test=x 代表 test=x 写入 config/main
+	[ -z "$2" ] && fold=$SBOX_DIR || fold=$2
+	dir=$fold/config/$(echo $1|awk -F "." '{print $1}')
+	touch $dir
+	var=$(echo $1|awk -F "[.=]" '{print $2}')
+	val=$(echo $1|awk -F "[.=]" '{print $3}')
+	[ -n "$(grep $var $dir)" ] && sed -i "s#${var}=.*#${var}=${val}#g" $dir || echo "${var}=${val}" >> $dir
+}
+get(){
+	#get main.test 代表从config/main中取test的值
+	[ -z "$2" ] && fold=$SBOX_DIR || fold=$2
+	dir=$fold/config/$(echo $1|awk -F "." '{print $1}')
+	if [ -f $dir ];then
+		var=$(echo $1|awk -F "." '{print $2}')
+		val=$(grep "$var" $dir|awk -F "=" '{print $2}')
+		echo $val
+	else
+		exit 1
+	fi
+}
+del(){
+	#del main.test 代表从 config/main 移除 test变量
+	#del main 代表从 config 移除 main 配置文件
+	[ -z "$2" ] && fold=$SBOX_DIR || fold=$2
+	dir=$fold/config/$(echo $1|awk -F "." '{print $1}')
+	var=$(echo $1|awk -F "[.]" '{print $2}')
+	[ -n "$var" ] && sed -i "s/${var}=.*/d" $dir || rm -rf $dir
+
+}
+#服务相关
+start(){
+	[ -n "$(pidof SBox_main)" ] && $0 stop #禁止多实例
+	#还原定时任务
+	if [ -f $SBOX_DIR/config/cron_backup ];then
+		croncmd -l >> $SBOX_DIR/config/cron_backup
+		croncmd $SBOX_DIR/config/cron_backup
+	fi
+	#启动守护进程
+	if [ -f /etc/rc.common ];then
+		/etc/init.d/clash start
+	elif [ "$USER" = "root" ];then
+		systemctl start clash.service
+	else
+		$0 daemon
+	fi
+	$0 set main.start_time=`date +%s`
+}
+stop(){
+	#移除定时任务
+	cronset "SBox"
+	#结束服务
+	#多种方式结束进程
+	if [ -f /etc/rc.common ];then
+		/etc/init.d/SBox stop >/dev/null 2>&1
+	elif [ "$USER" = "root" ];then
+		systemctl stop SBox.service >/dev/null 2>&1
+	fi
+	PID=$(pidof SBox) && [ -n "$PID" ] &&  kill -9 $PID >/dev/null 2>&1
+}
+daemon(){
+	cronset '#SBox守护进程' "*/1 * * * * $SBOX_DIR/SBox_main 1 #SBox守护进程"
+}
+init(){
+	if [ -d "/etc/storage/ShellBox" ];then
+		SBOX_DIR=/etc/storage/ShellBox
+		if [ -w "/opt/etc/profile" ];then
+			profile=/opt/etc/profile
+		else
+			profile=/etc/profile
+			sed -i '' $profile #将软链接转化为一般文件
+		fi
+	elif [ -d "/jffs/ShellBox" ];then
+		SBOX_DIR=/jffs/ShellBox
+		profile=/jffs/configs/profile.add
+	else
+		SBOX_DIR=$(cd $(dirname $0);pwd)
+		profile=/etc/profile
+	fi
+	echo "alias sbox=\"$SBOX_DIR/sbox_ctl.sh\"" >> $profile 
+	echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $profile 
+	[ -f $Sboxdir/.dis_startup ] && cronset "Sbox保守模式守护进程" || $0 start
+	;;
+list)
+	[ -f $SBOX_DIR/config/$1.list ] && cat $SBOX_DIR/config/$1.list || return 1
+}
+#命令相关
+help(){
+	echo -----------------------------------------
+	echo "Welcome to ShellBox！"
+	echo -----------------------------------------
+	echo "	-h	Display this help"
+	echo "	-v	Show the version"
+	echo "	-t	Test Mode"
+	echo "	-u	Uninstall"
+	echo -----------------------------------------
+	echo "	start	start ShellBox"
+	echo "	stop	stop ShellBox"
+	echo "	set		Use \"sbox set tool.value\" to set a config of a tool"
+	echo "	get		Use \"sbox get tool.value\" to get value from config"
+	echo "	del		Use \"sbox del tool.value\" to del the value from config"
+	echo -----------------------------------------
+	echo "Github：	github.com/juewuy/ShellClash"
+	echo "blog：	juewuy.github.io"
+	echo "Telgram：	t.me/clashfm"
+	echo -----------------------------------------
+}
+uninstall(){
+	read -p "Uninstall the ShellBox？[1/0] " res
+	if [ "$res" = '1' ]; then
+		$clashdir/start.sh stop
+		$clashdir/start.sh cronset "clash服务"
+		$clashdir/start.sh cronset "订阅链接"
+		$clashdir/start.sh cronset "ShellClash初始化"
+		[ -w ~/.bashrc ] && profile=~/.bashrc
+		[ -w /etc/profile ] && profile=/etc/profile
+		sed -i '/alias clash=*/'d $profile
+		sed -i '/export clashdir=*/'d $profile
+		sed -i '/all_proxy/'d $profile
+		sed -i '/ALL_PROXY/'d $profile
+		sed -i "/启用外网访问SSH服务/d" /etc/firewall.user
+		sed -i '/ShellClash初始化/'d /etc/storage/started_script.sh 2>/dev/null
+		sed -i '/ShellClash初始化/'d /jffs/.asusrouter 2>/dev/null
+		rm -rf $clashdir
+		rm -rf /etc/init.d/clash
+		rm -rf /etc/systemd/system/clash.service
+		rm -rf /usr/lib/systemd/system/clash.service
+		rm -rf /www/clash
+		rm -rf /tmp/clash_$USER
+		sed -Ei s/0:7890/7890:7890/g /etc/passwd
+		userdel -r shellclash 2>/dev/null
+		echo -----------------------------------------------
+		echo -e "\033[36m已卸载ShellClash相关文件！有缘再会！\033[0m"
+		echo -e "\033[33m请手动关闭当前窗口以重置环境变量！\033[0m"
+		echo -----------------------------------------------
+		exit
+	fi
+	echo -e "\033[31m操作已取消！\033[0m"
+}
+
+case "$1" in
+
+start)		start					;;
+stop)		stop					;;
+restart)	stop;start				;;
+daemon)		daemon					;;
+init)		init					;;
+list)		list $2					;;
+set)		set $2 $3				;;
+get)		get	$2 $3				;;
+del)		del	$2 $3				;;
+log)		log $2 $3 $4			;;
+cronset)	cronset $2 $3			;;
+-h)			help					;;
+-u)			uninstall				;;
+db)			$2 $3 $4				;;
+-v)			get sbox.version		;;
+-t)		$SH -x $SBOX_DIR/sbox.sh	;;
+*)		$SH $SBOX_DIR/sbox.sh		;;
+
+esac
+
+exit 0

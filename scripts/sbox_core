@@ -1,0 +1,22 @@
+#!/bin/sh
+# Copyright (C) Juewuy
+
+[ -z "$SBOX_DIR" ] && .sbox_ctl init
+interval=$(sbox get sbox.interval)
+
+if [ -z "$boot" ];then
+	for service in $SBOX_DIR/config/boot.list;do
+		sh $SBOX_DIR/tools/scripts/$service boot >/dev/null
+	done
+	boot=1
+fi
+
+while [ -z "$1" ];do
+	#检测并守护各个服务的状态
+	for service in $SBOX_DIR/config/service.list;do
+		[ -z "$(pidof $app)" ] && sh $SBOX_DIR/service.sh start $service
+	done
+	sleep $interval
+done
+
+exit 0
