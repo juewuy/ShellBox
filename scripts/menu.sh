@@ -1,59 +1,43 @@
 #!/bin/sh
 # Copyright (C) Juewuy
 
-#读取配置相关
-getconfig(){
-	#服务器缺省地址
-	[ -z "$update_url" ] && update_url=https://cdn.jsdelivr.net/gh/juewuy/ShellClash
-	#文件路径
-	[ -z "$clashdir" ] && echo 环境变量配置有误！请重新安装脚本！
-	ccfg=$clashdir/mark
-	yaml=$clashdir/config.yaml
-	#检查/读取标识文件
-	[ ! -f $ccfg ] && echo '#标识clash运行状态的文件，不明勿动！' > $ccfg
-	#检查重复行并去除
-	[ -n "$(awk 'a[$0]++' $ccfg)" ] && awk '!a[$0]++' $ccfg > $ccfg
-	#使用source加载配置文件
-	source $ccfg
-	#设置默认核心资源目录
-	[ -z "$bindir" ] && bindir=$clashdir
-	#设置默认端口及变量
-	[ -z "$mix_port" ] && mix_port=7890
-	[ -z "$redir_port" ] && redir_port=7892
-	[ -z "$db_port" ] && db_port=9999
-	[ -z "$dns_port" ] && dns_port=1053
-	[ -z "$multiport" ] && multiport='53,587,465,995,993,143,80,443'
-	[ -z "$local_proxy" ] && local_proxy=未开启
-	#检查mac地址记录
-	[ ! -f $clashdir/mac ] && touch $clashdir/mac
-	#获取本机host地址
-	[ -z "$host" ] && host=$(ubus call network.interface.lan status 2>&1 | grep \"address\" | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}';)
-	[ -z "$host" ] && host=$(ip a 2>&1 | grep -w 'inet' | grep 'global' | grep -E '\ 1(92|0|72)\.' | sed 's/.*inet.//g' | sed 's/\/[0-9][0-9].*$//g' | head -n 1)
-	[ -z "$host" ] && host=127.0.0.1
-	#dashboard目录位置
-	[ -d $clashdir/ui ] && dbdir=$clashdir/ui && hostdir=":$db_port/ui"
-	[ -d /www/clash ] && dbdir=/www/clash && hostdir=/clash
-	#开机自启检测
-	if [ -f /etc/rc.common ];then
-		[ -n "$(find /etc/rc.d -name '*clash')" ] && autostart=enable || autostart=disable
-	elif [ -w /etc/systemd/system -o -w /usr/lib/systemd/system ];then
-		[ -n "$(systemctl is-enabled clash.service 2>&1 | grep enable)" ] && autostart=enable || autostart=disable
-	fi
-	#开机自启描述
-	if [ "$autostart" = "disable" -o -f $clashdir/.dis_startup ]; then
-		auto="\033[31m未设置开机启动！\033[0m"
-		auto1="\033[36m允许\033[0mclash开机启动"
+alias sbox="$SBOX_DIR/sbox_ctl"
+
+lang_select(){
+	echo -----------------------------------------------
+	echo "Please select language !"
+	i=1
+	for lang in $SBOX_DIR/lang/* ;do
+		lang_des=$(head -n +1 $lang)
+		echo $i $lang_des
+		lang_all="$lang_all $lang"
+		i=$((i+1))
+	done
+	read -p "Iput the num : > " num
+	if [ -z "$num" ];then
+		LANG=en
+	elif [ "$num" -ge 1 -a "$num" -lt "$i" ];then
+		LANG=$(echo $lang_all|awk '{print $"'$num'"}')
 	else
-		auto="\033[32m已设置开机启动！\033[0m"
-		auto1="\033[36m禁用\033[0mclash开机启动"
+		echo "Error Number ! Try again !"
+		lang_select
 	fi
-	#获取运行模式
-	[ -z "$redir_mod" ] && redir_mod=纯净模式
+}
+getconfig(){
+	version=$(sbox get core.version)
+	boot=$(sbox get core.boot)
+	auto_start=$(sbox get core.auto_start)
+	#开机自启检测
+	if [ -f /etc/rc.common -a "$boot" != "mi_adv" ];then
+		[ -n "$(find /etc/rc.d -name '*ShellBox')" ] && auto_start=true || auto_start=false
+	elif [ -w /etc/systemd/system -o -w /usr/lib/systemd/system ];then
+		[ -n "$(systemctl is-enabled ShellBox.service 2>&1 | grep enable)" ] && auto_start=true || auto_start=false
+	fi
 	#获取运行状态
-	PID=$(pidof clash)
-	if [ -n "$PID" ];then
-		run="\033[32m正在运行（$redir_mod）\033[0m"
-		VmRSS=`cat /proc/$PID/status|grep -w VmRSS|awk '{print $2,$3}'`
+	pid=$(pidof sbox_core)
+	if [ -n "$pid" ];then
+		run="\033[32m$Lang_running\033[0m"
+		VmRSS=`cat /proc/$pid/status|grep -w VmRSS|awk '{print $2,$3}'`
 		#获取运行时长
 		if [ -n "$start_time" ]; then 
 			time=$((`date +%s`-start_time))
@@ -73,32 +57,28 @@ getconfig(){
 	if [ -n "$PID" ];then
 		echo -e "当前内存占用：\033[44m"$VmRSS"\033[0m，已运行：\033[46;30m"$day"\033[44;37m"$time"\033[0m"
 	fi
-	echo -e "TG群：\033[36;4mhttps://t.me/clashfm\033[0m"
+	echo -e "TG群：\033[36;4mhttps://t.me/ShellBoxfm\033[0m"
 	echo -----------------------------------------------
 	#检查新手引导
 	if [ -z "$userguide" ];then
 		setconfig userguide 1
-		source $clashdir/getdate.sh && userguide
+		source $ShellBoxdir/getdate.sh && userguide
 	fi
 	#检查执行权限
-	[ ! -x $clashdir/start.sh ] && chmod +x $clashdir/start.sh
+	[ ! -x $ShellBoxdir/start.sh ] && chmod +x $ShellBoxdir/start.sh
 }
-setconfig(){
-	#参数1代表变量名，参数2代表变量值,参数3即文件路径
-	[ -z "$3" ] && configpath=$clashdir/mark || configpath=$3
-	[ -n "$(grep -E "^${1}=" $configpath)" ] && sed -i "s#^${1}=\(.*\)#${1}=${2}#g" $configpath || echo "${1}=${2}" >> $configpath
-}
+
 #启动相关
 errornum(){
 	echo -----------------------------------------------
 	echo -e "\033[31m请输入正确的数字！\033[0m"
 }
 startover(){
-	echo -e "\033[32mclash服务已启动！\033[0m"
+	echo -e "\033[32mShellBox服务已启动！\033[0m"
 	if [ -n "$hostdir" ];then
 		echo -e "请使用 \033[4;32mhttp://$host$hostdir\033[0m 管理内置规则"
 	else
-		echo -e "可使用 \033[4;32mhttp://clash.razord.top\033[0m 管理内置规则"
+		echo -e "可使用 \033[4;32mhttp://ShellBox.razord.top\033[0m 管理内置规则"
 		echo -e "Host地址:\033[36m $host \033[0m 端口:\033[36m $db_port \033[0m"
 		echo -e "推荐前往更新菜单安装本地Dashboard面板，连接更稳定！\033[0m"
 	fi
@@ -108,24 +88,24 @@ startover(){
 		echo -e "或者使用HTTP/SOCK5方式连接：IP{\033[36m$host\033[0m}端口{\033[36m$mix_port\033[0m}"
 	fi
 }
-clashstart(){
+ShellBoxstart(){
 	#检查yaml配置文件
 	if [ ! -f "$yaml" ];then
 		echo -----------------------------------------------
 		echo -e "\033[31m没有找到配置文件，请先导入配置文件！\033[0m"
-		source $clashdir/getdate.sh && clashlink
+		source $ShellBoxdir/getdate.sh && ShellBoxlink
 	fi
 	echo -----------------------------------------------
-	$clashdir/start.sh start
+	$ShellBoxdir/start.sh start
 	sleep 1
-	[ -n "$(pidof clash)" ] && startover
+	[ -n "$(pidof ShellBox)" ] && startover
 }
 checkrestart(){
 	echo -----------------------------------------------
-	echo -e "\033[32m检测到已变更的内容，请重启clash服务！\033[0m"
+	echo -e "\033[32m检测到已变更的内容，请重启ShellBox服务！\033[0m"
 	echo -----------------------------------------------
-	read -p "是否现在重启clash服务？(1/0) > " res
-	[ "$res" = 1 ] && clashstart
+	read -p "是否现在重启ShellBox服务？(1/0) > " res
+	[ "$res" = 1 ] && ShellBoxstart
 }
 #功能相关
 setport(){
@@ -300,12 +280,12 @@ setdns(){
 		setdns
 		
 	elif [ "$num" = 4 ]; then
-		$clashdir/start.sh webget /tmp/ssl_test https://www.baidu.com echooff rediron skipceroff
+		$ShellBoxdir/start.sh webget /tmp/ssl_test https://www.baidu.com echooff rediron skipceroff
 		if [ "$？" = "1" ];then
 			echo -----------------------------------------------
 			if openssl version >/dev/null 2>&1;then
 				echo -e "\033[31m当前设备缺少本地根证书，请先安装证书！\033[0m"
-				source $clashdir/getdate.sh
+				source $ShellBoxdir/getdate.sh
 				setcrt
 			else
 				echo -e "\033[31m当前设备未安装OpenSSL，无法启用加密DNS，Linux系统请自行搜索安装方式！\033[0m"
@@ -337,7 +317,7 @@ setdns(){
 	elif [ "$num" = 6 ]; then
 		echo -----------------------------------------------
 		if [ "$dns_redir" = "未开启" ]; then 
-			echo -e "\033[31m将使用OpenWrt中Dnsmasq插件自带的DNS转发功能转发DNS请求至clash内核！\033[0m"
+			echo -e "\033[31m将使用OpenWrt中Dnsmasq插件自带的DNS转发功能转发DNS请求至ShellBox内核！\033[0m"
 			echo -e "\033[33m启用后将禁用本插件自带的iptables转发功能\033[0m"
 			dns_redir=已开启
 			echo -e "\033[32m已启用Dnsmasq转发DNS功能！！！\033[0m"
@@ -369,7 +349,7 @@ checkport(){
 	for portx in $dns_port $mix_port $redir_port $db_port ;do
 		if [ -n "$(netstat -ntul 2>&1 |grep \:$portx\ )" ];then
 			echo -----------------------------------------------
-			echo -e "检测到端口【$portx】被以下进程占用！clash可能无法正常启动！\033[33m"
+			echo -e "检测到端口【$portx】被以下进程占用！ShellBox可能无法正常启动！\033[33m"
 			echo $(netstat -ntul | grep :$portx | head -n 1)
 			echo -e "\033[0m-----------------------------------------------"
 			echo -e "\033[36m请修改默认端口配置！\033[0m"
@@ -383,7 +363,7 @@ macfilter(){
 	add_mac(){
 		echo -----------------------------------------------
 		echo 已添加的mac地址：
-		cat $clashdir/mac
+		cat $ShellBoxdir/mac
 		echo -----------------------------------------------
 		echo -e "\033[33m序号   设备IP       设备mac地址       设备名称\033[32m"
 		cat $dhcpdir | awk '{print " "NR" "$3,$2,$4}'
@@ -395,8 +375,8 @@ macfilter(){
 		if [ -z "$num" -o "$num" = 0 ]; then
 			i=
 		elif [ -n "$(echo $num | grep -E '^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$')" ];then
-			if [ -z "$(cat $clashdir/mac | grep -E "$num")" ];then
-				echo $num | grep -oE '^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$' >> $clashdir/mac
+			if [ -z "$(cat $ShellBoxdir/mac | grep -E "$num")" ];then
+				echo $num | grep -oE '^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$' >> $ShellBoxdir/mac
 			else
 				echo -----------------------------------------------
 				echo -e "\033[31m已添加的设备，请勿重复添加！\033[0m"
@@ -404,8 +384,8 @@ macfilter(){
 			add_mac
 		elif [ $num -le $(cat $dhcpdir | awk 'END{print NR}') 2>/dev/null ]; then
 			macadd=$(cat $dhcpdir | awk '{print $2}' | sed -n "$num"p)
-			if [ -z "$(cat $clashdir/mac | grep -E "$macadd")" ];then
-				echo $macadd >> $clashdir/mac
+			if [ -z "$(cat $ShellBoxdir/mac | grep -E "$macadd")" ];then
+				echo $macadd >> $ShellBoxdir/mac
 			else
 				echo -----------------------------------------------
 				echo -e "\033[31m已添加的设备，请勿重复添加！\033[0m"
@@ -419,12 +399,12 @@ macfilter(){
 	}
 	del_mac(){
 		echo -----------------------------------------------
-		if [ -z "$(cat $clashdir/mac)" ];then
+		if [ -z "$(cat $ShellBoxdir/mac)" ];then
 			echo -e "\033[31m列表中没有需要移除的设备！\033[0m"
 		else
 			echo -e "\033[33m序号   设备IP       设备mac地址       设备名称\033[0m"
 			i=1
-			for mac in $(cat $clashdir/mac); do
+			for mac in $(cat $ShellBoxdir/mac); do
 				dev_ip=$(cat $dhcpdir | grep $mac | awk '{print $3}') && [ -z "$dev_ip" ] && dev_ip='000.000.00.00'
 				dev_mac=$(cat $dhcpdir | grep $mac | awk '{print $2}') && [ -z "$dev_mac" ] && dev_mac=$mac
 				dev_name=$(cat $dhcpdir | grep $mac | awk '{print $4}') && [ -z "$dev_name" ] && dev_name='未知设备'
@@ -436,8 +416,8 @@ macfilter(){
 			read -p "请输入需要移除的设备的对应序号 > " num
 			if [ -z "$num" ]||[ "$num" -le 0 ]; then
 				n=
-			elif [ $num -le $(cat $clashdir/mac | wc -l) ];then
-				sed -i "${num}d" $clashdir/mac
+			elif [ $num -le $(cat $ShellBoxdir/mac | wc -l) ];then
+				sed -i "${num}d" $ShellBoxdir/mac
 				echo -----------------------------------------------
 				echo -e "\033[32m对应设备已移除！\033[0m"
 				del_mac
@@ -466,11 +446,11 @@ macfilter(){
 	echo -e "\033[30;47m请在此添加或移除设备\033[0m"
 	echo -e "当前过滤方式为：\033[33m$macfilter_type模式\033[0m"
 	echo -e "仅列表内设备\033[36m$macfilter_scrip经过\033[0mClash内核"
-	if [ -n "$(cat $clashdir/mac)" ]; then
+	if [ -n "$(cat $ShellBoxdir/mac)" ]; then
 		echo -----------------------------------------------
 		echo -e "当前已过滤设备为：\033[36m"
 		echo -e "\033[33m   设备IP       设备mac地址       设备名称\033[0m"
-		for mac in $(cat $clashdir/mac); do
+		for mac in $(cat $ShellBoxdir/mac); do
 			dev_ip=$(cat $dhcpdir | grep $mac | awk '{print $3}') && [ -z "$dev_ip" ] && dev_ip='000.000.00.00'
 			dev_mac=$(cat $dhcpdir | grep $mac | awk '{print $2}') && [ -z "$dev_mac" ] && dev_mac=$mac
 			dev_name=$(cat $dhcpdir | grep $mac | awk '{print $4}') && [ -z "$dev_name" ] && dev_name='未知设备'
@@ -501,7 +481,7 @@ macfilter(){
 		del_mac
 		macfilter
 	elif [ "$num" = 4 ]; then
-		:>$clashdir/mac
+		:>$ShellBoxdir/mac
 		echo -----------------------------------------------
 		echo -e "\033[31m设备列表已清空！\033[0m"
 		macfilter
@@ -540,15 +520,15 @@ localproxy(){
 				setconfig local_proxy $local_proxy
 				setconfig local_type $local_type
 				echo -e "\033[32m已经成功使用$local_type方式配置本机代理~\033[0m"
-				[ "$local_type" = "环境变量" ] && $clashdir/start.sh set_proxy $mix_port $db_port &&echo -e "\033[36m如未生效，请重新启动终端或重新连接SSH！\033[0m" && sleep 1
-				[ "$local_type" = "iptables增强模式" ] && $clashdir/start.sh start
+				[ "$local_type" = "环境变量" ] && $ShellBoxdir/start.sh set_proxy $mix_port $db_port &&echo -e "\033[36m如未生效，请重新启动终端或重新连接SSH！\033[0m" && sleep 1
+				[ "$local_type" = "iptables增强模式" ] && $ShellBoxdir/start.sh start
 			fi		
 		else
 			local_proxy=未开启
 			setconfig local_proxy $local_proxy
 			setconfig local_type
-			$clashdir/start.sh stop
-			echo -e "\033[33m已经停用本机代理规则并停止clash服务！！\033[0m"
+			$ShellBoxdir/start.sh stop
+			echo -e "\033[33m已经停用本机代理规则并停止ShellBox服务！！\033[0m"
 			[ "$local_type" = "环境变量" ] && echo -e "\033[36m如未生效，请重新启动终端或重新连接SSH！\033[0m" && sleep 1
 		fi
 
@@ -557,7 +537,7 @@ localproxy(){
 		setconfig local_type $local_type
 		localproxy
 	elif [ "$num" = 3 ]; then
-		if [ -w /etc/systemd/system/clash.service -o -w /usr/lib/systemd/system/clash.service -o -x /bin/su ];then
+		if [ -w /etc/systemd/system/ShellBox.service -o -w /usr/lib/systemd/system/ShellBox.service -o -x /bin/su ];then
 			local_type="iptables增强模式"
 			setconfig local_type $local_type
 		else
@@ -569,7 +549,7 @@ localproxy(){
 		errornum
 	fi	
 }
-clashcfg(){
+ShellBoxcfg(){
 	set_redir_mod(){
 		set_redir_config(){
 			setconfig redir_mod $redir_mod
@@ -578,9 +558,9 @@ clashcfg(){
 			echo -e "\033[36m已设为 $redir_mod ！！\033[0m"
 		}
 		echo -----------------------------------------------
-		echo -e "当前代理模式为：\033[47;30m $redir_mod \033[0m；Clash核心为：\033[47;30m $clashcore \033[0m"
-		echo -e "\033[33m切换模式后需要手动重启clash服务以生效！\033[0m"
-		echo -e "\033[36mTun及混合模式必须使用clashpre核心！\033[0m"
+		echo -e "当前代理模式为：\033[47;30m $redir_mod \033[0m；Clash核心为：\033[47;30m $ShellBoxcore \033[0m"
+		echo -e "\033[33m切换模式后需要手动重启ShellBox服务以生效！\033[0m"
+		echo -e "\033[36mTun及混合模式必须使用ShellBoxpre核心！\033[0m"
 		echo -----------------------------------------------
 		echo -e " 1 Redir模式：CPU以及内存\033[33m占用较低\033[0m"
 		echo -e "              但\033[31m不支持UDP\033[0m"
@@ -655,7 +635,7 @@ clashcfg(){
 	set_dns_mod(){
 		echo -----------------------------------------------
 		echo -e "当前DNS运行模式为：\033[47;30m $dns_mod \033[0m"
-		echo -e "\033[33m切换模式后需要手动重启clash服务以生效！\033[0m"
+		echo -e "\033[33m切换模式后需要手动重启ShellBox服务以生效！\033[0m"
 		echo -----------------------------------------------
 		echo -e " 1 fake-ip模式：   \033[32m响应速度更快\033[0m"
 		echo -e "                   兼容性比较差，部分应用可能打不开"
@@ -698,7 +678,7 @@ clashcfg(){
 	[ -z "$dns_mod" ] && dns_mod=redir_host
 	[ -z "$dns_over" ] && dns_over=已开启
 	[ -z "$cn_ip_route" ] && cn_ip_route=未开启
-	[ -z "$(cat $clashdir/mac)" ] && mac_return=未开启 || mac_return=已启用
+	[ -z "$(cat $ShellBoxdir/mac)" ] && mac_return=未开启 || mac_return=已启用
 	#
 	echo -----------------------------------------------
 	echo -e "\033[30;47m欢迎使用功能设置菜单：\033[0m"
@@ -708,7 +688,7 @@ clashcfg(){
 	echo -e " 3 跳过本地证书验证：	\033[36m$skip_cert\033[0m   ————解决节点证书验证错误"
 	echo -e " 4 只代理常用端口： 	\033[36m$common_ports\033[0m   ————用于过滤P2P流量"
 	echo -e " 5 过滤局域网设备：	\033[36m$mac_return\033[0m   ————使用黑/白名单进行过滤"
-	echo -e " 6 设置本机代理服务:	\033[36m$local_proxy\033[0m   ————使本机流量经过clash内核"
+	echo -e " 6 设置本机代理服务:	\033[36m$local_proxy\033[0m   ————使本机流量经过ShellBox内核"
 	echo -e " 7 CN_IP绕过内核:	\033[36m$cn_ip_route\033[0m   ————优化性能，不兼容Fake-ip"
 	echo -----------------------------------------------
 	echo -e " 0 返回上级菜单 \033[0m"
@@ -726,11 +706,11 @@ clashcfg(){
 		else
 			set_redir_mod
 		fi
-		clashcfg
+		ShellBoxcfg
 	  
 	elif [ "$num" = 2 ]; then
 		set_dns_mod
-		clashcfg
+		ShellBoxcfg
 	
 	elif [ "$num" = 3 ]; then	
 		echo -----------------------------------------------
@@ -742,7 +722,7 @@ clashcfg(){
 			skip_cert=未开启
 		fi
 		setconfig skip_cert $skip_cert 
-		clashcfg
+		ShellBoxcfg
 	
 	elif [ "$num" = 4 ]; then	
 		echo -----------------------------------------------	
@@ -754,16 +734,16 @@ clashcfg(){
 			common_ports=未开启
 		fi
 		setconfig common_ports $common_ports
-		clashcfg  
+		ShellBoxcfg  
 
 	elif [ "$num" = 5 ]; then	
 		macfilter
-		clashcfg
+		ShellBoxcfg
 		
 	elif [ "$num" = 6 ]; then	
 		localproxy
 		sleep 1
-		clashcfg
+		ShellBoxcfg
 		
 	elif [ "$num" = 7 ]; then
 		echo -----------------------------------------------
@@ -773,7 +753,7 @@ clashcfg(){
 		elif [ "$dns_mod" = "fake-ip" ];then
 			echo -e "\033[31m不支持fake-ip模式，请将DNS模式更换为Redir-host！！\033[0m"
 			sleep 1
-			clashcfg
+			ShellBoxcfg
 		else
 			if [ "$cn_ip_route" = "未开启" ]; then 
 				echo -e "\033[32m已开启CN_IP绕过内核功能！！\033[0m"
@@ -785,31 +765,31 @@ clashcfg(){
 			fi
 			setconfig cn_ip_route $cn_ip_route
 		fi
-			clashcfg  	
+			ShellBoxcfg  	
 		
 	elif [ "$num" = 9 ]; then	
-		clashstart
+		ShellBoxstart
 	else
 		errornum
 	fi
 }
-clashadv(){
+ShellBoxadv(){
 	#获取设置默认显示
 	[ -z "$modify_yaml" ] && modify_yaml=未开启
 	[ -z "$ipv6_support" ] && ipv6_support=未开启
 	[ -z "$start_old" ] && start_old=未开启
 	[ -z "$tproxy_mod" ] && tproxy_mod=未开启
 	[ -z "$public_support" ] && public_support=未开启
-	[ "$bindir" = "/tmp/clash_$USER" ] && mini_clash=已开启 || mini_clash=未开启
+	[ "$bindir" = "/tmp/ShellBox_$USER" ] && mini_ShellBox=已开启 || mini_ShellBox=未开启
 	#
 	echo -----------------------------------------------
 	echo -e "\033[30;47m欢迎使用进阶模式菜单：\033[0m"
-	echo -e "\033[33m如您并不了解clash的运行机制，请勿更改本页面功能！\033[0m"
+	echo -e "\033[33m如您并不了解ShellBox的运行机制，请勿更改本页面功能！\033[0m"
 	echo -----------------------------------------------
-	echo -e " 1 使用保守模式启动:	\033[36m$start_old\033[0m	————切换时会停止clash服务"
+	echo -e " 1 使用保守模式启动:	\033[36m$start_old\033[0m	————切换时会停止ShellBox服务"
 	echo -e " 2 启用ipv6支持:	\033[36m$ipv6_support\033[0m	————实验性功能，可能不稳定"
 	echo -e " 3 Redir模式udp转发:	\033[36m$tproxy_mod\033[0m	————依赖iptables-mod-tproxy"
-	echo -e " 4 启用小闪存模式:	\033[36m$mini_clash\033[0m	————不保存核心及数据库文件"
+	echo -e " 4 启用小闪存模式:	\033[36m$mini_ShellBox\033[0m	————不保存核心及数据库文件"
 	echo -e " 5 允许公网访问:	\033[36m$public_support\033[0m	————需要路由拨号+公网IP"
 	echo -e " 6 配置内置DNS服务	\033[36m$dns_no\033[0m"
 	echo -e " 7 使用自定义配置"
@@ -826,25 +806,25 @@ clashadv(){
 	elif [ "$num" = 1 ]; then	
 		echo -----------------------------------------------
 		if [ "$start_old" = "未开启" ] > /dev/null 2>&1; then 
-			echo -e "\033[33m改为使用保守模式启动clash服务！！\033[0m"
+			echo -e "\033[33m改为使用保守模式启动ShellBox服务！！\033[0m"
 			echo -e "\033[31m注意：部分设备保守模式可能无法禁用开机启动！！\033[0m"
 			start_old=已开启
 			setconfig start_old $start_old
-			$clashdir/start.sh stop
+			$ShellBoxdir/start.sh stop
 		else
-			if [ -f /etc/init.d/clash -o -w /etc/systemd/system -o -w /usr/lib/systemd/system ];then
-				echo -e "\033[32m改为使用默认方式启动clash服务！！\033[0m"
-				$clashdir/start.sh cronset "ShellClash初始化"
+			if [ -f /etc/init.d/ShellBox -o -w /etc/systemd/system -o -w /usr/lib/systemd/system ];then
+				echo -e "\033[32m改为使用默认方式启动ShellBox服务！！\033[0m"
+				$ShellBoxdir/start.sh cronset "ShellClash初始化"
 				start_old=未开启
 				setconfig start_old $start_old
-				$clashdir/start.sh stop
+				$ShellBoxdir/start.sh stop
 				
 			else
 				echo -e "\033[31m当前设备不支持以其他模式启动！！\033[0m"
 			fi
 		fi
 		sleep 1
-		clashadv 
+		ShellBoxadv 
 		
 	elif [ "$num" = 2 ]; then
 		echo -----------------------------------------------
@@ -858,7 +838,7 @@ clashadv(){
 			ipv6_support=未开启
 		fi
 		setconfig ipv6_support $ipv6_support
-		clashadv   
+		ShellBoxadv   
 		
 	elif [ "$num" = 3 ]; then	
 		echo -----------------------------------------------
@@ -876,18 +856,18 @@ clashadv(){
 		fi
 		setconfig tproxy_mod $tproxy_mod
 		sleep 1
-		clashadv 	
+		ShellBoxadv 	
 		
 	elif [ "$num" = 4 ]; then	
 		echo -----------------------------------------------
-		dir_size=$(df $clashdir | awk '{print $4}' | sed 1d)
-		if [ "$mini_clash" = "未开启" ]; then 
+		dir_size=$(df $ShellBoxdir | awk '{print $4}' | sed 1d)
+		if [ "$mini_ShellBox" = "未开启" ]; then 
 			if [ "$dir_size" -gt 20480 ];then
 				echo -e "\033[33m您的设备空间充足(>20M)，无需开启！\033[0m"
 			elif pidof systemd >/dev/null 2>&1;then
 				echo -e "\033[33m该设备不支持开启此模式！\033[0m"
 			else
-				bindir="/tmp/clash_$USER"
+				bindir="/tmp/ShellBox_$USER"
 				echo -e "\033[32m已经启用小闪存功能！\033[0m"
 				echo -e "核心及数据库文件将存储在内存中执行，并在每次开机运行后自动下载\033[0m"
 			fi
@@ -895,16 +875,16 @@ clashadv(){
 			if [ "$dir_size" -lt 8192 ];then
 				echo -e "\033[31m您的设备剩余空间不足8M，停用后可能无法正常运行！\033[0m"
 				read -p "确认停用此功能？(1/0) > " res
-				[ "$res" = 1 ] && bindir="$clashdir" && echo -e "\033[33m已经停用小闪存功能！\033[0m"
+				[ "$res" = 1 ] && bindir="$ShellBoxdir" && echo -e "\033[33m已经停用小闪存功能！\033[0m"
 			else
-				rm -rf /tmp/clash_$USER
-				bindir="$clashdir"
+				rm -rf /tmp/ShellBox_$USER
+				bindir="$ShellBoxdir"
 				echo -e "\033[33m已经停用小闪存功能！\033[0m"
 			fi
 		fi
 		setconfig bindir $bindir
 		sleep 1
-		clashadv
+		ShellBoxadv
 		
 	elif [ "$num" = 5 ]; then
 		if [ "$public_support" = "未开启" ]; then 
@@ -920,7 +900,7 @@ clashadv(){
 			setconfig public_support $public_support
 			sleep 1
 		fi
-			clashadv
+			ShellBoxadv
 		
 	elif [ "$num" = 6 ]; then
 		source $ccfg
@@ -933,31 +913,31 @@ clashadv(){
 		else
 			setdns
 		fi
-		clashadv	
+		ShellBoxadv	
 		
 	elif [ "$num" = 8 ]; then
 		source $ccfg
-		if [ -n "$(pidof clash)" ];then
+		if [ -n "$(pidof ShellBox)" ];then
 			echo -----------------------------------------------
-			echo -e "\033[33m检测到clash服务正在运行，需要先停止clash服务！\033[0m"
-			read -p "是否停止clash服务？(1/0) > " res
+			echo -e "\033[33m检测到ShellBox服务正在运行，需要先停止ShellBox服务！\033[0m"
+			read -p "是否停止ShellBox服务？(1/0) > " res
 			if [ "$res" = "1" ];then
-				$clashdir/start.sh stop
+				$ShellBoxdir/start.sh stop
 				setport
 			fi
 		else
 			setport
 		fi
-		clashadv
+		ShellBoxadv
 		
 	elif [ "$num" = 7 ]; then
-		[ ! -f $clashdir/user.yaml ] && cat > $clashdir/user.yaml <<EOF
-#用于编写自定义设定(可参考https://lancellc.gitbook.io/clash)，例如
+		[ ! -f $ShellBoxdir/user.yaml ] && cat > $ShellBoxdir/user.yaml <<EOF
+#用于编写自定义设定(可参考https://lancellc.gitbook.io/ShellBox)，例如
 #新版已经支持直接读取系统hosts(/etc/hosts)并写入配置文件，无需在此处添加！
 #port: 7890
 EOF
-		[ ! -f $clashdir/rules.yaml ] && cat > $clashdir/rules.yaml <<EOF
-#用于编写自定义规则(此处规则将优先生效)，(可参考https://lancellc.gitbook.io/clash/clash-config-file/rules)：
+		[ ! -f $ShellBoxdir/rules.yaml ] && cat > $ShellBoxdir/rules.yaml <<EOF
+#用于编写自定义规则(此处规则将优先生效)，(可参考https://lancellc.gitbook.io/ShellBox/ShellBox-config-file/rules)：
 #例如“🚀 节点选择”、“🎯 全球直连”这样的自定义规则组必须与config.yaml中的代理规则组相匹配，否则将无法运行
 # - DOMAIN-SUFFIX,google.com,🚀 节点选择
 # - DOMAIN-KEYWORD,baidu,🎯 全球直连
@@ -969,11 +949,11 @@ EOF
 # - SRC-PORT,7777,DIRECT
 EOF
 		echo -e "\033[32m已经启用自定义配置功能！\033[0m"
-		echo -e "Windows下请\n使用\033[33mwinscp软件\033[0m进入$clashdir目录后手动编辑！\033[0m"
-		echo -e "Shell下(\033[31m部分旧设备可能不显示中文\033[0m)可\n使用【\033[36mvi $clashdir/user.yaml\033[0m】编辑自定义设定文件;\n使用【\033[36mvi $clashdir/rules.yaml\033[0m】编辑自定义规则文件。"
+		echo -e "Windows下请\n使用\033[33mwinscp软件\033[0m进入$ShellBoxdir目录后手动编辑！\033[0m"
+		echo -e "Shell下(\033[31m部分旧设备可能不显示中文\033[0m)可\n使用【\033[36mvi $ShellBoxdir/user.yaml\033[0m】编辑自定义设定文件;\n使用【\033[36mvi $ShellBoxdir/rules.yaml\033[0m】编辑自定义规则文件。"
 		echo -e "如需自定义节点，可以在config.yaml文件中修改或者直接替换config.yaml文件！\033[0m"
 		sleep 3
-		clashadv
+		ShellBoxadv
 		
 	elif [ "$num" = 9 ]; then	
 		echo -e " 1 备份脚本设置"
@@ -1013,8 +993,8 @@ streaming(){
 	[ -z "$netflix_pre" ] && netflix_pre=未开启
 	[ -z "$disneyP_pre" ] && disneyP_pre=未开启
 	[ -z "$streaming_int" ] && streaming_int=24
-	netflix_dir=$clashdir/streaming/Netflix_Domains.list
-	disneyp_dir=$clashdir/streaming/Disney_Plus_Domains.list
+	netflix_dir=$ShellBoxdir/streaming/Netflix_Domains.list
+	disneyp_dir=$ShellBoxdir/streaming/Disney_Plus_Domains.list
 	####
 	echo -e "\033[30;46m欢迎使用流媒体预解析功能：\033[0m"
 	echo -e "\033[33m感谢OpenClash项目提供相关域名数据库！\033[0m"
@@ -1094,7 +1074,7 @@ tools(){
 		[ -n "$(cat /etc/firewall.user 2>&1 | grep '启用外网访问SSH服务')" ] && ssh_ol=禁止 || ssh_ol=开启
 		[ -z "$ssh_port" ] && ssh_port=10022
 		echo -----------------------------------------------
-		echo -e "\033[33m此功能仅针对使用Openwrt系统的设备生效，且不依赖clash服务\033[0m"
+		echo -e "\033[33m此功能仅针对使用Openwrt系统的设备生效，且不依赖ShellBox服务\033[0m"
 		echo -e "\033[31m本功能不支持红米AX6S等镜像化系统设备，请勿尝试！\033[0m"
 		echo -----------------------------------------------
 		echo -e " 1 \033[32m修改\033[0m外网访问端口：\033[36m$ssh_port\033[0m"
@@ -1158,7 +1138,7 @@ tools(){
 	echo -e "\033[30;47m欢迎使用其他工具菜单：\033[0m"
 	echo -e "\033[33m本页工具可能无法兼容全部Linux设备，请酌情使用！\033[0m"
 	echo -e "磁盘占用/所在目录："
-	du -sh $clashdir
+	du -sh $ShellBoxdir
 	echo -----------------------------------------------
 	echo -e " 1 ShellClash测试菜单"
 	[ -f /etc/firewall.user ] && echo -e " 2 \033[32m配置\033[0m外网访问SSH"
@@ -1176,7 +1156,7 @@ tools(){
 		i=
 		
 	elif [ "$num" = 1 ]; then
-		source $clashdir/getdate.sh && testcommand  
+		source $ShellBoxdir/getdate.sh && testcommand  
 		
 	elif [ "$num" = 2 ]; then
 		ssh_tools
@@ -1185,17 +1165,17 @@ tools(){
 		
 	elif [ "$num" = 3 ]; then
 		echo -----------------------------------------------
-		if [ ! -f $clashdir/ShellDDNS.sh ];then
+		if [ ! -f $ShellBoxdir/ShellDDNS.sh ];then
 			echo -e "正在获取在线脚本……"
-			$clashdir/start.sh webget /tmp/ShellDDNS.sh $update_url/tools/ShellDDNS.sh
+			$ShellBoxdir/start.sh webget /tmp/ShellDDNS.sh $update_url/tools/ShellDDNS.sh
 			if [ "$?" = "0" ];then
-				mv -f /tmp/ShellDDNS.sh $clashdir/ShellDDNS.sh
-				source $clashdir/ShellDDNS.sh
+				mv -f /tmp/ShellDDNS.sh $ShellBoxdir/ShellDDNS.sh
+				source $ShellBoxdir/ShellDDNS.sh
 			else
 				echo -e "\033[31m文件下载失败！\033[0m"
 			fi
 		else
-			source $clashdir/ShellDDNS.sh
+			source $ShellBoxdir/ShellDDNS.sh
 		fi
 		sleep 1
 		tools  
@@ -1230,12 +1210,12 @@ tools(){
 		else
 			echo -----------------------------------------------
 			echo -e "\033[33m本功能使用软件命令进行固化不保证100%成功！\033[0m"
-			echo -e "本功能需依赖clash服务，请确保clash为开机启动状态！"
-			echo -e "\033[33m如有问题请加群反馈：\033[36;4mhttps://t.me/clashfm\033[0m"
+			echo -e "本功能需依赖ShellBox服务，请确保ShellBox为开机启动状态！"
+			echo -e "\033[33m如有问题请加群反馈：\033[36;4mhttps://t.me/ShellBoxfm\033[0m"
 			read -p "请输入需要还原的SSH密码(不影响当前密码,回车可跳过) > " mi_autoSSH_pwd
 			mi_autoSSH=已启用
 			if [ "$systype" = "mi_snapshot" ];then
-				cp -f /etc/dropbear/dropbear_rsa_host_key $clashdir/dropbear_rsa_host_key 2>/dev/null
+				cp -f /etc/dropbear/dropbear_rsa_host_key $ShellBoxdir/dropbear_rsa_host_key 2>/dev/null
 				echo -e "\033[32m检测当前为小米镜像化系统，已将SSH秘钥备份到脚本安装目录！\033[0m"
 				echo -e "\033[32mClash会在启动时自动还原已备份的秘钥文件！\033[0m"
 			fi
@@ -1248,7 +1228,7 @@ tools(){
 		errornum
 	fi
 }
-clashcron(){
+ShellBoxcron(){
 	croncmd(){
 		if [ -n "$(crontab -h 2>&1 | grep '\-l')" ];then
 			crontab $1
@@ -1257,7 +1237,7 @@ clashcron(){
 			[ ! -w "$crondir" ] && crondir="/etc/storage/cron/crontabs"
 			[ ! -w "$crondir" ] && crondir="/var/spool/cron/crontabs"
 			[ ! -w "$crondir" ] && crondir="/var/spool/cron"
-			[ ! -w "$crondir" ] && echo "你的设备不支持定时任务配置，脚本大量功能无法启用，请前往 https://t.me/clashfm 申请适配！"
+			[ ! -w "$crondir" ] && echo "你的设备不支持定时任务配置，脚本大量功能无法启用，请前往 https://t.me/ShellBoxfm 申请适配！"
 			[ "$1" = "-l" ] && cat $crondir/$USER 2>/dev/null
 			[ -f "$1" ] && cat $1 > $crondir/$USER
 		fi
@@ -1297,7 +1277,7 @@ clashcron(){
 							echo "$cronwords" >> $tmpcron
 							croncmd $tmpcron
 							#华硕/Padavan固件存档在本地,其他则删除
-							[ "$clashdir" = "/jffs/clash" -o "$clashdir" = "/etc/storage/clash" ] && mv -f $tmpcron $clashdir/cron || rm -f $tmpcron
+							[ "$ShellBoxdir" = "/jffs/ShellBox" -o "$ShellBoxdir" = "/etc/storage/ShellBox" ] && mv -f $tmpcron $ShellBoxdir/cron || rm -f $tmpcron
 							echo -----------------------------------------------
 							echo -e "\033[31m定时任务已添加！！！\033[0m"
 						fi
@@ -1321,7 +1301,7 @@ clashcron(){
 			i=
 		elif [ "$num" = 9 ]; then
 			croncmd -l > /tmp/conf && sed -i "/$cronname/d" /tmp/conf && croncmd /tmp/conf
-			sed -i "/$cronname/d" $clashdir/cron 2>/dev/null
+			sed -i "/$cronname/d" $ShellBoxdir/cron 2>/dev/null
 			rm -f /tmp/conf
 			echo -----------------------------------------------
 			echo -e "\033[31m定时任务：$cronname已删除！\033[0m"
@@ -1340,14 +1320,14 @@ clashcron(){
 	#定时任务菜单
 	echo -----------------------------------------------
 	echo -e "\033[30;47m欢迎使用定时任务功能：\033[0m"
-	echo -e "\033[44m 实验性功能，遇问题请加TG群反馈：\033[42;30m t.me/clashfm \033[0m"
+	echo -e "\033[44m 实验性功能，遇问题请加TG群反馈：\033[42;30m t.me/ShellBoxfm \033[0m"
 	echo -----------------------------------------------
 	echo  -e "\033[33m已添加的定时任务：\033[36m"
 	croncmd -l | grep -oE ' #.*' 
 	echo -e "\033[0m"-----------------------------------------------
-	echo -e " 1 设置\033[33m定时重启\033[0mclash服务"
-	echo -e " 2 设置\033[31m定时停止\033[0mclash服务"
-	echo -e " 3 设置\033[32m定时开启\033[0mclash服务"
+	echo -e " 1 设置\033[33m定时重启\033[0mShellBox服务"
+	echo -e " 2 设置\033[31m定时停止\033[0mShellBox服务"
+	echo -e " 3 设置\033[32m定时开启\033[0mShellBox服务"
 	echo -e " 4 设置\033[33m定时更新\033[0m订阅并重启服务"
 	echo -----------------------------------------------
 	echo -e " 0 返回上级菜单" 
@@ -1357,43 +1337,43 @@ clashcron(){
 	elif [ "$num" = 0 ]; then
 		i=
 	elif [ "$num" = 1 ]; then
-		cronname=重启clash服务
-		cronset="$clashdir/start.sh restart"
+		cronname=重启ShellBox服务
+		cronset="$ShellBoxdir/start.sh restart"
 		setcron
-		clashcron
+		ShellBoxcron
 	elif [ "$num" = 2 ]; then
-		cronname=停止clash服务
-		cronset="$clashdir/start.sh stop"
+		cronname=停止ShellBox服务
+		cronset="$ShellBoxdir/start.sh stop"
 		setcron
-		clashcron
+		ShellBoxcron
 	elif [ "$num" = 3 ]; then
-		cronname=开启clash服务
-		cronset="$clashdir/start.sh start"
+		cronname=开启ShellBox服务
+		cronset="$ShellBoxdir/start.sh start"
 		setcron
-		clashcron
+		ShellBoxcron
 	elif [ "$num" = 4 ]; then	
 		cronname=更新订阅链接
-		cronset="$clashdir/start.sh updateyaml"
+		cronset="$ShellBoxdir/start.sh updateyaml"
 		setcron	
-		clashcron
+		ShellBoxcron
 	else
 		errornum
 	fi
 }
 #主菜单
-clashsh(){
+menu(){
+	LANG=$(sbox get core.lang)
+	[ "$LANG" = 0 ] && lang_select
+	source $LANG
 	#############################
 	getconfig
 	#############################
-	echo -e " 1 \033[32m启动/重启\033[0mclash服务"
-	echo -e " 2 clash\033[33m功能设置\033[0m"
-	echo -e " 3 \033[31m停止\033[0mclash服务"
-	echo -e " 4 $auto1"
-	echo -e " 5 设置\033[33m定时任务\033[0m$cronoff"
-	echo -e " 6 导入\033[32m配置文件\033[0m"
-	echo -e " 7 clash\033[31m进阶设置\033[0m"
-	echo -e " 8 \033[35m其他工具\033[0m"
-	echo -e " 9 \033[36m更新/卸载\033[0m"
+	echo -e " 1 \033[32m停止ShellBox\033[0m"
+	echo -e " 2 \033[33mShellBox设置\033[0m"
+	echo -e " 3 \033[32m管理后台服务\033[0m"
+	echo -e " 4 \033[33m查看定时任务\033[0m"
+	echo -e " 5 \033[33m已装插件管理\033[0m"
+	echo -e " 6 \033[36m安装及更新\033[0m"
 	echo -----------------------------------------------
 	echo -e " 0 \033[0m退出脚本\033[0m"
 	read -p "请输入对应数字 > " num
@@ -1405,68 +1385,68 @@ clashsh(){
 		exit;
 		
 	elif [ "$num" = 1 ]; then
-		clashstart
+		ShellBoxstart
 		exit;
   
 	elif [ "$num" = 2 ]; then
 		checkcfg=$(cat $ccfg)
-		clashcfg
+		ShellBoxcfg
 		if [ -n "$PID" ];then
 			checkcfg_new=$(cat $ccfg)
 			[ "$checkcfg" != "$checkcfg_new" ] && checkrestart
 		fi
-		clashsh
+		ShellBoxsh
 
 	elif [ "$num" = 3 ]; then
-		$clashdir/start.sh stop
+		$ShellBoxdir/start.sh stop
 		echo -----------------------------------------------
 		echo -e "\033[31mClash服务已停止！\033[0m"
-		clashsh
+		ShellBoxsh
 
 	elif [ "$num" = 4 ]; then
 		echo -----------------------------------------------
 		if [ "$autostart" = "enable" ]; then
-			[ -d /etc/rc.d ] && cd /etc/rc.d && rm -rf *clash > /dev/null 2>&1 && cd - >/dev/null
-			type systemctl >/dev/null 2>&1 && systemctl disable clash.service > /dev/null 2>&1
-			touch $clashdir/.dis_startup
+			[ -d /etc/rc.d ] && cd /etc/rc.d && rm -rf *ShellBox > /dev/null 2>&1 && cd - >/dev/null
+			type systemctl >/dev/null 2>&1 && systemctl disable ShellBox.service > /dev/null 2>&1
+			touch $ShellBoxdir/.dis_startup
 			echo -e "\033[33m已禁止Clash开机启动！\033[0m"
 		elif [ "$autostart" = "disable" ]; then
-			[ -f /etc/rc.common ] && /etc/init.d/clash enable
-			type systemctl >/dev/null 2>&1 && systemctl enable clash.service > /dev/null 2>&1
-			rm -rf $clashdir/.dis_startup
+			[ -f /etc/rc.common ] && /etc/init.d/ShellBox enable
+			type systemctl >/dev/null 2>&1 && systemctl enable ShellBox.service > /dev/null 2>&1
+			rm -rf $ShellBoxdir/.dis_startup
 			echo -e "\033[32m已设置Clash开机启动！\033[0m"
 		fi
-		clashsh
+		ShellBoxsh
 
 	elif [ "$num" = 5 ]; then
-		clashcron
-		clashsh
+		ShellBoxcron
+		ShellBoxsh
     
 	elif [ "$num" = 6 ]; then
-		source $clashdir/getdate.sh && clashlink
-		clashsh
+		source $ShellBoxdir/getdate.sh && ShellBoxlink
+		ShellBoxsh
 		
 	elif [ "$num" = 7 ]; then
 		checkcfg=$(cat $ccfg)
-		clashadv
+		ShellBoxadv
 		if [ -n "$PID" ];then
 			checkcfg_new=$(cat $ccfg)
 			[ "$checkcfg" != "$checkcfg_new" ] && checkrestart
 		fi
-		clashsh
+		ShellBoxsh
 
 	elif [ "$num" = 8 ]; then
 		tools
-		clashsh
+		ShellBoxsh
 
 	elif [ "$num" = 9 ]; then
 		checkcfg=$(cat $ccfg)
-		source $clashdir/getdate.sh && update
+		source $ShellBoxdir/getdate.sh && update
 		if [ -n "$PID" ];then
 			checkcfg_new=$(cat $ccfg)
 			[ "$checkcfg" != "$checkcfg_new" ] && checkrestart
 		fi
-		clashsh
+		ShellBoxsh
 	
 	else
 		errornum
@@ -1474,63 +1454,10 @@ clashsh(){
 	fi
 }
 
-[ -z "$1" ] && clashsh
+
 
 case "$1" in
-	-h)
-		echo -----------------------------------------
-		echo "欢迎使用ShellClash"
-		echo -----------------------------------------
-		echo "	-t 测试模式"
-		echo "	-h 帮助列表"
-		echo "	-u 卸载脚本"
-		echo -----------------------------------------
-		echo "	$clashdir/start.sh start	启动服务"
-		echo "	$clashdir/start.sh stop		停止服务"
-		echo "	$clashdir/start.sh init		写入服务"
-		echo -----------------------------------------
-		echo "在线求助：t.me/clashfm"
-		echo "官方博客：juewuy.github.io"
-		echo "发布页面：github.com/juewuy/ShellClash"
-		echo -----------------------------------------
-	;;
-	-t)
-		shtype=sh && [ -n "$(ls -l /bin/sh|grep -o dash)" ] && shtype=bash
-		$shtype -x $clashdir/clash.sh
-	;;
-	-u)
-		read -p "确认卸载ShellClash？（警告：该操作不可逆！）[1/0] " res
-		if [ "$res" = '1' ]; then
-			$clashdir/start.sh stop
-			$clashdir/start.sh cronset "clash服务"
-			$clashdir/start.sh cronset "订阅链接"
-			$clashdir/start.sh cronset "ShellClash初始化"
-			[ -w ~/.bashrc ] && profile=~/.bashrc
-			[ -w /etc/profile ] && profile=/etc/profile
-			sed -i '/alias clash=*/'d $profile
-			sed -i '/export clashdir=*/'d $profile
-			sed -i '/all_proxy/'d $profile
-			sed -i '/ALL_PROXY/'d $profile
-			sed -i "/启用外网访问SSH服务/d" /etc/firewall.user
-			sed -i '/ShellClash初始化/'d /etc/storage/started_script.sh 2>/dev/null
-			sed -i '/ShellClash初始化/'d /jffs/.asusrouter 2>/dev/null
-			rm -rf $clashdir
-			rm -rf /etc/init.d/clash
-			rm -rf /etc/systemd/system/clash.service
-			rm -rf /usr/lib/systemd/system/clash.service
-			rm -rf /www/clash
-			rm -rf /tmp/clash_$USER
-			sed -Ei s/0:7890/7890:7890/g /etc/passwd
-			userdel -r shellclash 2>/dev/null
-			echo -----------------------------------------------
-			echo -e "\033[36m已卸载ShellClash相关文件！有缘再会！\033[0m"
-			echo -e "\033[33m请手动关闭当前窗口以重置环境变量！\033[0m"
-			echo -----------------------------------------------
-			exit
-		fi
-		echo -e "\033[31m操作已取消！\033[0m"
-	;;
-	*)
-		$0 -h
-	;;
+
+*)					menu				;;
+
 esac

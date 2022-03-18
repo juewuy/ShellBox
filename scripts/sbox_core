@@ -2,7 +2,8 @@
 # Copyright (C) Juewuy
 
 [ -z "$SBOX_DIR" ] && .sbox_ctl init
-interval=$(sbox get sbox.interval)
+INT=$(sbox get sbox.interval)
+[ -z "$INT" ] && INT=5
 
 if [ -z "$boot" ];then
 	for service in $SBOX_DIR/config/boot.list;do
@@ -16,7 +17,7 @@ while [ -z "$1" ];do
 	for service in $SBOX_DIR/config/service.list;do
 		[ -z "$(pidof $app)" ] && sh $SBOX_DIR/service.sh start $service
 	done
-	sleep $interval
+	sleep $INT
 done
 
 exit 0

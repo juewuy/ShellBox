@@ -1,11 +1,9 @@
 #!/bin/sh
 # Copyright (C) Juewuy
 
-[ -n "$(ls -l /bin/sh|grep -o dash)" ] && SH=bash || SH=sh
-LOG_LV=$($0 get core.log_lv)
-
 #内置工具
 log(){
+	LOG_LV=$($0 get core.log_lv)
 	[ -z "$LOG_LV" ] && LOG_LV=0
 	# $3 代表崩溃日志，存放在安装目录，当LOG_LV等于2时，则一律存放
 	if [ -z "$3" -a "$LOG_LV" -lt 2 ];then
@@ -42,7 +40,7 @@ cronset(){
 	croncmd $tmpcron
 	rm -rf $tmpcron
 }
-set(){
+site(){
 	#set main.test=x 代表 test=x 写入 config/main
 	[ -z "$2" ] && fold=$SBOX_DIR || fold=$2
 	dir=$fold/config/$(echo $1|awk -F "." '{print $1}')
@@ -58,8 +56,10 @@ get(){
 	if [ -f $dir ];then
 		var=$(echo $1|awk -F "." '{print $2}')
 		val=$(grep "$var" $dir|awk -F "=" '{print $2}')
+		[ -z "$val" ] && val=0
 		echo $val
 	else
+		echo 0
 		exit 1
 	fi
 }
@@ -72,6 +72,10 @@ del(){
 	[ -n "$var" ] && sed -i "s/${var}=.*/d" $dir || rm -rf $dir
 
 }
+list(){
+	[ -f $SBOX_DIR/config/$1.list ] && cat $SBOX_DIR/config/$1.list || return 1
+}
+
 #服务相关
 start(){
 	[ -n "$(pidof SBox_main)" ] && $0 stop #禁止多实例
@@ -80,7 +84,7 @@ start(){
 		croncmd -l >> $SBOX_DIR/config/cron_backup
 		croncmd $SBOX_DIR/config/cron_backup
 	fi
-	#启动守护进程
+	#启动ShellBox
 	if [ -f /etc/rc.common ];then
 		/etc/init.d/clash start
 	elif [ "$USER" = "root" ];then
@@ -106,6 +110,10 @@ daemon(){
 	cronset '#SBox守护进程' "*/1 * * * * $SBOX_DIR/SBox_main 1 #SBox守护进程"
 }
 init(){
+	[ -f "/etc/storage/started_script.sh" ]&& initdir='/etc/storage/started_script.sh'
+	[ -d "/jffs/scripts" ] && initdir='/jffs/scripts/net-start'
+	[ -f "/jffs/.asusrouter" ] && initdir='/jffs/.asusrouter'
+	#设置环境变量
 	if [ -d "/etc/storage/ShellBox" ];then
 		SBOX_DIR=/etc/storage/ShellBox
 		if [ -w "/opt/etc/profile" ];then
@@ -121,13 +129,12 @@ init(){
 		SBOX_DIR=$(cd $(dirname $0);pwd)
 		profile=/etc/profile
 	fi
+	echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $profile
 	echo "alias sbox=\"$SBOX_DIR/sbox_ctl.sh\"" >> $profile 
-	echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $profile 
-	[ -f $Sboxdir/.dis_startup ] && cronset "Sbox保守模式守护进程" || $0 start
-	;;
-list)
-	[ -f $SBOX_DIR/config/$1.list ] && cat $SBOX_DIR/config/$1.list || return 1
+	#启动ShellBox
+	[ "$($0 get core.auto_start)" = false ] && cronset "SBox守护进程" || $0 start
 }
+
 #命令相关
 help(){
 	echo -----------------------------------------
@@ -190,7 +197,7 @@ restart)	stop;start				;;
 daemon)		daemon					;;
 init)		init					;;
 list)		list $2					;;
-set)		set $2 $3				;;
+set)		site $2 $3				;;
 get)		get	$2 $3				;;
 del)		del	$2 $3				;;
 log)		log $2 $3 $4			;;
@@ -199,8 +206,8 @@ cronset)	cronset $2 $3			;;
 -u)			uninstall				;;
 db)			$2 $3 $4				;;
 -v)			get sbox.version		;;
--t)		$SH -x $SBOX_DIR/sbox.sh	;;
-*)		$SH $SBOX_DIR/sbox.sh		;;
+-t)		$SH -x $SBOX_DIR/menu.sh	;;
+*)		$SH $SBOX_DIR/menu.sh		;;
 
 esac
 

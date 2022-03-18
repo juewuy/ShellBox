@@ -5,7 +5,7 @@ CPU_TYPE=$(sbox get core.cpu_type)
 CORE=$(sbox get $APP.core)
 PARA=$(sbox get $APP.para)
 APP_DIR=$SBOX_DIR/tools/apps/$APP
-[ -n "$(sbox get core.lite)" ] && BIN_DIR=/tmp/ShellBox/bin/$APP || BIN_DIR=$APP_DIR
+[ "$(sbox get core.lite)" = true ] && BIN_DIR=/tmp/ShellBox/bin/$APP || BIN_DIR=$APP_DIR
 
 check_files(){
 	#检查并下载内核
