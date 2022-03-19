@@ -1,0 +1,11 @@
+﻿变量名\文件名,chs,en
+语言描述,#简体中文,#English
+lang_errornum,请输入正确的数字！,
+lang_tools_service,后台服务管理,
+lang_tools_cron,查看定时任务,
+lang_tools_local,显示本地插件,
+lang_tools_online,获取在线插件,
+lang_sbox_set,ShellBox设置,
+lang_about,关于本脚本,
+lang_close_menu,关闭菜单,
+
