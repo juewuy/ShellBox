@@ -1,0 +1,15 @@
+变量名\文件名,chs,en
+语言描述,#简体中文,#English
+lang_welcome,欢迎使用,Welcome to 
+lang_has_run,已运行, has run
+lang_mem_free,空余内存,Free memory 
+lang_disk_info,磁盘占用,Disk usage
+lang_errornum,请输入正确的数字！,Please enter a correct number!
+lang_tools_service,后台服务管理,Service management
+lang_tools_cron,查看定时任务,View crontab tasks
+lang_tools_local,显示本地插件,Show local plugins
+lang_tools_online,获取在线插件,Get online plugins
+lang_sbox_set,ShellBox设置,ShellBox settings
+lang_about,关于本脚本,About
+lang_close_menu,关闭菜单,Close menu
+lang_input_num,请输入对应数字,Enter corresponding number
