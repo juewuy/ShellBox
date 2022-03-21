@@ -111,16 +111,14 @@ webget(){
 	#参数【$1】代表目标路径，【$2】代表在线路径
 	#参数【$3】代表重试次数，【$4】代表输出显示
 	#参数【$5】不启用重定向，【$6】代表验证证书
-
 	[ -z "$3" ] && j=1 || j=$3
-	SERVER=$($0 get core.server)
 
 	for ((i=1;i<=j;i++));do
 		if type curl > /dev/null 2>&1;then
 			[ "$4" = "echooff" ] && progress='-s' || progress='-#'
 			[ "$5" = "rediroff" ] && redirect='' || redirect='-L'
 			[ "$6" = "skipceroff" ] && certificate='' || certificate='-k'
-			result=$(curl $agent -w %{http_code} --connect-timeout 3 $progress $redirect $certificate -o "$1" "${SERVER}$2")
+			result=$(curl $agent -w %{http_code} --connect-timeout 3 $progress $redirect $certificate -o "$1" "$2")
 			[ "$result" -ge 200 -a "$result" -lt 300 ] && exit 0
 		else
 			if wget --version > /dev/null 2>&1;then
@@ -131,13 +129,15 @@ webget(){
 			fi
 			[ "$4" = "echoon" ] && progress=''
 			[ "$4" = "echooff" ] && progress='-q'
-			wget $agent $progress $redirect $certificate $timeout -O "$1" "${SERVER}$2"
+			wget $agent $progress $redirect $certificate $timeout -O "$1" "$2"
 			[ "$?" = 0 ] && exit 0
 		fi
 	done
+	exit 1
 }
 #服务相关
 start(){
+	boot=$(get sbox.boot)
 	[ -n "$(pidof sbox_core)" ] && $0 stop #禁止多实例
 	#还原定时任务
 	if [ -f $SBOX_DIR/config/cron_backup ];then
@@ -145,10 +145,10 @@ start(){
 		croncmd $SBOX_DIR/config/cron_backup
 	fi
 	#启动ShellBox
-	if [ -f /etc/rc.common ];then
-		/etc/init.d/clash start
-	elif [ "$USER" = "root" ];then
-		systemctl start clash.service
+	if [ -f /etc/rc.common -a "$boot" = "system" ];then
+		/etc/init.d/sbox start
+	elif type systemctl >/dev/null && [ "$boot" = "system" ];then
+		systemctl start sbox.service
 	else
 		$0 daemon
 	fi
@@ -160,9 +160,9 @@ stop(){
 	#结束服务
 	#多种方式结束进程
 	if [ -f /etc/rc.common ];then
-		/etc/init.d/SBox stop >/dev/null 2>&1
+		/etc/init.d/sbox stop >/dev/null 2>&1
 	elif [ "$USER" = "root" ];then
-		systemctl stop SBox.service >/dev/null 2>&1
+		systemctl stop sbox.service >/dev/null 2>&1
 	fi
 	PID=$(pidof sbox_core) && [ -n "$PID" ] &&  kill -9 $PID >/dev/null 2>&1
 }
@@ -171,7 +171,7 @@ daemon(){
 }
 boot(){
 	ck_profile
-	[ "$($0 get sbox.auto_start)" = false ] && cronset "SBox守护进程" || $0 start
+	[ "$($0 get sbox.boot)" = disable ] && cronset "SBox守护进程" || $0 start
 }
 init(){
 	ck_profile
@@ -223,6 +223,10 @@ uninstall(){
 		rm -rf /tmp/clash_$USER
 		sed -Ei s/0:7890/7890:7890/g /etc/passwd
 		userdel -r shellclash 2>/dev/null
+		type uci >/dev/null && { 
+		uci del firewall.ShellBox
+		uci commit firewall
+		}
 		echo -----------------------------------------------
 		echo -e "\033[36m已卸载ShellClash相关文件！有缘再会！\033[0m"
 		echo -e "\033[33m请手动关闭当前窗口以重置环境变量！\033[0m"

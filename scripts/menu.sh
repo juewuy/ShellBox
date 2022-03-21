@@ -993,7 +993,7 @@ tools_service(){
 	numbers=$(cat $list | wc -l)
 	if [ "$numbers" -gt 0 ];then
 		echo -----------------------------------
-		secho "正在运行的服务：" 
+		secho "$lang_running_service" 
 		cat $list | awk '{print " "NR" "$1}'
 		echo -----------------------------------
 		secho " a $lang_tools_cron"  
@@ -1019,8 +1019,13 @@ tools_service(){
 		esac
 		[ "$norl" = 0 ] || tools_service
 	else
-		secho "没有正在运行的服务，已帮你跳转到插件列表！"	31
-		lang_tools_local
+		if [ "$(cat $SBOX_DIR/config/local.list | wc -l)" = 0 ];then
+			secho "$lang_none_plugins"	33
+			tools_online
+		else
+			secho "lang_none_service"	31
+			tools_local
+		fi
 	fi
 }
 tools_local(){
@@ -1028,10 +1033,10 @@ tools_local(){
 	numbers=$(cat $list | wc -l)
 	if [ "$numbers" -gt 0 ];then
 		echo -----------------------------------
-		secho "已安装但未运行的插件：" 
+		secho "$lang_local_plugins" 
 		cat $list | awk '{print " "NR" "$1}'
 		echo -----------------------------------
-		secho " a $lang_tools_service"  
+		secho " a $lang_tools_service" 
 		secho " b $lang_tools_cron"		
 		secho " c $lang_tools_online"
 		secho " 0 $lang_return_menu"	
@@ -1054,18 +1059,26 @@ tools_local(){
 		esac
 		[ "$norl" = 0 ] || tools_local
 	else
-		secho "没有找到已安装插件，已帮你跳转至在线插件列表！"	31
-		tools_online
+		if [ "$(cat $SBOX_DIR/config/service.list | wc -l)" = 0 ];then
+			secho "$lang_none_plugins"	33
+			tools_online
+		else
+			secho "$lang_none_local"	31
+			tools_service
+		fi
 	fi
+}
 tools_online(){
 	update_url=$(sbox get sbox.update_url)
-	$SBOX_DIR/webget 
-	list=$SBOX_DIR/config/local.list
-	numbers=$(cat $list | wc -l)
-	if [ "$numbers" -gt 0 ];then
+	list_ol=/tmp/ShellBox_$USER/online.list
+	list_lo=$SBOX_DIR/config/local.list
+	list_run=$SBOX_DIR/config/service.list
+	secho "$lang_online_list"
+	sbox webget ${list_ol} ${update_url}/bin/tools_${LANG}.list 2
+	if [ "$?" = 0 ];then
 		echo -----------------------------------
-		secho "已安装但未运行的插件：" 
-		cat $list | awk '{print " "NR" "$1}'
+		secho "$lang_online_select" 
+		cat $list_ol | grep -v -f $list_lo | grep -v -f $list_run | awk '{print " "NR" "$1" ——"$2}'
 		echo -----------------------------------
 		secho " a $lang_tools_service"  
 		secho " b $lang_tools_cron"		
@@ -1090,9 +1103,10 @@ tools_online(){
 		esac
 		[ "$norl" = 0 ] || tools_online
 	else
-		secho "没有找到已安装插件，已帮你跳转至在线插件列表！"	31
-		lang_tools_local
+		secho "$lang_online_error"	31
+		update
 	fi
+}
 set_tools(){
 	[ -n "$(pidof $1)" ] && start_stop=\033[31m$lang_stop || start_stop=\033[32m$lang_start
 	########################################
@@ -1162,15 +1176,15 @@ tools_cron(){
 
 #子菜单_sbox相关
 set_sbox(){
-	[ -n "$(pidof sbox_core)" ] && sbox_start=\033[31m$lang_stop || start_stop=\033[32m$lang_start
+	[ -n "$(pidof sbox_core)" ] && start_stop=\033[31m$lang_stop || start_stop=\033[32m$lang_start
 	########################################
-	secho " 1 $sbox_startShellBox\033[0m"  
-	secho " 2 $修改启动方式"		
-	secho " 3 $进阶功能设置"
-	secho " 4 $配置备份还原"	
-	secho " 5 $查看后台日志"
-	secho " 6 $更新ShellBox"	
-	secho " 9 $卸载ShellBox"
+	secho " 1 ${start_stop}ShellBox\033[0m"  
+	secho " 2 $lang_boot_type"		
+	secho " 3 $lang_advanced_set"
+	secho " 4 $lang_backup"	
+	secho " 5 $lang_view_logs"
+	secho " 6 ${lang_update}ShellBox"	
+	secho " 9 ${lang_uninstall}ShellBox"
 	secho " 0 $lang_return_menu"	
 	echo -----------------------------------
 	read -p "$lang_input_num > " num
@@ -1191,44 +1205,121 @@ set_sbox(){
 	[ "$num" = 0 ] || set_sbox
 }
 set_boot(){
+	unsupported(){
+		echo -----------------------------------
+		secho "$lang_boot_unsupport" 31
+	}
 	boot=$(sbox get sbox.boot)
 	
 	echo -----------------------------------
-	secho "当前启动状态：$boot" 
+	secho "$lang_boot_state $boot" 
 	echo -----------------------------------
 	########################################
-	secho " 1 $使用守护进程"  
-	secho " 2 $使用定时任务"		
-	secho " 3 $小米增强启动"
-	secho " 4 $禁止开机启动"	
+	secho " 1 $lang_boot_system"  
+	secho " 2 $lang_boot_cron"		
+	secho " 3 $lang_boot_mi_adv"
+	secho " 4 $lang_boot_disable"
 	secho " 0 $lang_return_menu"	
 	echo -----------------------------------
 	read -p "$lang_input_num > " num
 	########################################	
 	case "$num" in
-		1)			set_boot			;;
-		2)			set_boot			;;
-		3)			advanced			;;
-		4)			backup				;;
+		1)	
+			if [ -f /etc/rc.common -o -w /etc/systemd/system -o -w /usr/lib/systemd/system ] && [ "$(dir_avail /etc)" != 0 ];then
+				boot=system
+				[ -f /etc/rc.common ] && /etc/init.d/sbox enable
+				type systemctl >/dev/null && systemctl enable sbox.service
+				sbox cronset '#SBox守护进程'
+				type uci >/dev/null && { 
+				uci del firewall.ShellBox
+				uci commit firewall
+				}
+			else
+				unsupported
+			fi
+			;;
+		2)				
+			if [ "$(dir_avail /etc)" != 0 ];then
+				boot=old
+				sbox cronset '#SBox守护进程' "*/1 * * * * $SBOX_DIR/sbox_core 1 #SBox守护进程"
+				[ -f /etc/rc.common ] && /etc/init.d/sbox disable
+				type systemctl >/dev/null && systemctl disable sbox.service
+			else
+				unsupported
+			fi			
+			;;
+		3)
+			if [ -f /data/etc/config/firewall ];then
+				boot=mi_adv
+				chmod 755 $SBOX_DIR/mi_adv.sh
+				uci set firewall.ShellBox=include
+				uci set firewall.ShellBox.type='script'
+				uci set firewall.ShellBox.path='/data/ShellBox/mi_adv.sh'
+				uci set firewall.ShellBox.enabled='1'
+				uci commit firewall	
+				sbox cronset '#SBox守护进程'
+			else
+				unsupported
+			fi			
+			;;
+		4)	
+			boot=disable
+			sbox cronset '#SBox守护进程'
+			[ -f /etc/rc.common ] && /etc/init.d/sbox disable
+			type systemctl >/dev/null && systemctl disable sbox.service		
+			;;
 		*)			errornum			;;
 	esac
+	sbox set sbox.boot=$boot
 	[ "$num" = 0 ] || set_boot
 }
 advanced(){
 	echo -----------------------------------
-	secho "当前启动状态：$boot" 
-	echo -----------------------------------
 	########################################
-	secho " 1 施工中"  
+	secho " 1 启用小闪存模式"  
+	secho " 2 指定处理器架构" 
+	secho " 3 获取非兼容插件"
+	secho " 4 添加第三方插件" 
 	secho " 0 $lang_return_menu"	
 	echo -----------------------------------
 	read -p "$lang_input_num > " num
 	########################################	
 	case "$num" in
-		1)			errornum			;;
+		1)			set_bindir			;;
+		2)			set_arch			;;
+		3)			
+			sbox set sbox.app_test=true
+			;;
+		4)			add_other_tools		;;
 		*)			errornum			;;
 	esac
 	[ "$num" = 0 ] || advanced
+}
+set_bindir(){
+	input_dir(){
+		read -p "$lang_input_fold > " bindir
+		[ ! -w $bindir -o "$(dir_avail $bindir)" = 0 ] && secho "没有目标目录写入权限！请重新输入！" 31 && input_dir
+	}
+	echo -----------------------------------
+	secho "注意：插件内核加载到内存后，重启设备后将自动重新下载相关文件" 33
+	echo -----------------------------------
+	########################################
+	secho " 1 将插件文件下载到内存/tmp"  
+	secho " 2 将插件文件下载到指定目录" 
+	secho " 3 将插件文件下载到安装目录"
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		1)			bindir=/tmp/ShellBox_$USER		;;
+		2)			input_dir			;;
+		3)			bindir=				;;
+		*)			errornum			;;
+	esac
+	#还得做一下文件移动
+	sbox set sbox.bin_dir=bindir
+	[ "$num" = 0 ] || set_bindir	
 }
 backup(){
 	########################################

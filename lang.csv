@@ -1,5 +1,5 @@
 变量名\文件名,chs,en
-语言描述,#简体中文,#English
+lang_name,简体中文,English
 lang_welcome,欢迎使用,Welcome to 
 lang_has_run,已运行, has run
 lang_mem_free,空余内存,Free memory 
@@ -9,7 +9,30 @@ lang_tools_service,后台服务管理,Service management
 lang_tools_cron,查看定时任务,View crontab tasks
 lang_tools_local,显示本地插件,Show local plugins
 lang_tools_online,获取在线插件,Get online plugins
-lang_sbox_set,ShellBox设置,ShellBox settings
+lang_set_sbox,ShellBox设置,ShellBox settings
 lang_about,关于本脚本,About
 lang_close_menu,关闭菜单,Close menu
 lang_input_num,请输入对应数字,Enter corresponding number
+lang_running_service,正在运行的服务：,Running service: 
+lang_input_norl,请输入对应字母或数字,Enter a letter or number
+lang_none_plugins,你还未安装过任何插件，请先安装插件！,"No plugins installed, please install plugins first!"
+lang_none_service,没有正在运行的服务，请先运行一个服务！,"No service is running, please run a plugins first!"
+lang_local_plugins,已安装但未运行的插件：,Plugins installed but not running: 
+lang_none_local,没有未运行的插件，已跳转到后台服务界面！,"All plugins running, jump to Service management"
+lang_online_list,正在获取在线插件列表……,Getting list of online plugins...
+lang_online_select,请选择想要安装的插件：,Please select a plugin which want to install: 
+lang_online_error,无法连接服务器！请更换安装源！,Server connect failed! Please change the server！
+lang_start,启动,Start
+lang_stop,停止,Stop
+lang_boot_type,修改启动方式,Select the boot method
+lang_advanced_set,进阶功能设置,Advanced settings
+lang_backup,配置备份还原,Backup & Restore
+lang_view_logs,查看后台日志,View logs
+lang_update,更新,Update 
+lang_uninstall,卸载,Uninstall 
+lang_boot_state,当前启动状态：,Current boot state: 
+lang_boot_system,作为系统进程,As system process
+lang_boot_cron,使用定时任务,Use crontab
+lang_boot_mi_adv,小米增强启动,Miwifi Enhanced boot
+lang_boot_disable,禁止开机启动,Disable startup
+lang_boot_unsupport,当前设备不支持的启动模式，请选择其他模式！,"Device doesn't support this boot mode, choose another! "

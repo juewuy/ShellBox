@@ -3,7 +3,7 @@
 
 SBOX_DIR=$(cd $(dirname $0);pwd)
 PROFILE=/etc/profile
-INIT_DIR=/etc/init.d/clash
+INIT_DIR=/etc/init.d/sbox
 
 #h初始化环境变量
 echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $PROFILE

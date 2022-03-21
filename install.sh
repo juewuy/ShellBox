@@ -2,24 +2,16 @@
 # Copyright (C) Juewuy
 
 ########################################################################################################
-[ -n "$(echo -e|grep e)" ] && echo=echo || echo='echo -e'
-[ -n "$(ls -l /bin/sh|grep -oE 'dash|show|bash')" ] && shtype=bash || shtype=sh
-[ -f "/etc/storage/started_script.sh" ] && systype=Padavan && initdir='/etc/storage/started_script.sh'
-[ -d "/jffs/scripts" ] && systype=asusrouter && initdir='/jffs/scripts/net-start'
-[ -f "/jffs/.asusrouter" ] && systype=asusrouter && initdir='/jffs/.asusrouter'
-[ -f "/data/etc/crontabs/root" -a "$(dir_avail /etc)" = 0 ] && systype=mi_snapshot
-[ -z "$url" ] && url="https://cdn.jsdelivr.net/gh/juewuy/ShellBox@master"
+					echo "***********************************************"
+					echo "**                 欢迎使用                  **"
+					echo "**               	 ShellBox ！     	       **"
+					echo "**                             by  Juewuy    **"
+					echo "***********************************************"
 ########################################################################################################
-
-echo "***********************************************"
-echo "**                 欢迎使用                  **"
-echo "**               	 ShellBox ！     	       **"
-echo "**                             by  Juewuy    **"
-echo "***********************************************"
 
 #脚本工具
 dir_avail(){
-	df -h $1 |awk '{ for(i=1;i<=NF;i++){ if(NR==1){ arr[i]=$i; }else{ arr[i]=arr[i]" "$i; } } } END{ for(i=1;i<=NF;i++){ print arr[i]; } }' |grep Ava |awk '{print $2}'
+	df -h $1 | awk '{ for(i=1;i<=NF;i++){ if(NR==1){ arr[i]=$i; }else{ arr[i]=arr[i]" "$i; } } } END{ for(i=1;i<=NF;i++){ print arr[i]; } }' | grep Ava | awk '{print $2}'
 }
 webget(){
 	#参数【$1】代表目标路径，【$2】代表在线路径
@@ -46,6 +38,7 @@ webget(){
 }
 gettar(){
 	tmp_dir=/tmp/ShellBox/ShellBox.tar.gz
+	#下载
 	webget $tmp_dir $tarurl 2
 	[ "$?" != 0 ] && echo "文件下载失败,请尝试使用其他安装源！" && exit 1
 	#解压
@@ -53,50 +46,50 @@ gettar(){
 	echo 开始解压文件！
 	mkdir -p $SBOX_DIR > /dev/null
 	tar -zxvf '$tmp_dir' -C $SBOX_DIR/
-	[ "$?" != 0 ] && echo "文件解压失败,已退出！" && rm -rf $tmp_dir && exit 1 
-	#修饰文件及版本号
+	[ "$?" != 0 ] && echo "文件解压失败,已退出！" && rm -rf $tmp_dir && exit 1
+	rm -rf $tmp_dir
+	#修饰文件
 	sed -i "s#/bin/sh#/bin/$shtype#" $SBOX_DIR/sbox_ctl
-	chmod 755 $SBOX_DIR/sbox_ctl
-	#设置更新地址
-	[ -n "$url" ] && setconfig update_url $url
-}
-init(){
-	#设置环境变量	
-	[ -w /opt/etc/profile ] && profile=/opt/etc/profile
-	[ -w /jffs/configs/profile.add ] && profile=/jffs/configs/profile.add
-	[ -w ~/.bashrc ] && profile=~/.bashrc
-	[ -w /etc/profile ] && profile=/etc/profile
-	if [ -n "$profile" ];then
-		sed -i '/alias clash=*/'d $profile
-		echo "alias clash=\"$shtype $SBOX_DIR/clash.sh\"" >> $profile #设置快捷命令环境变量
-		sed -i '/export SBOX_DIR=*/'d $profile
-		echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $profile #设置clash路径环境变量
+	sed -i "s#/bin/sh#/bin/$shtype#" $SBOX_DIR/sbox_core
+	chmod 755 $SBOX_DIR/sbox_ctl $SBOX_DIR/sbox_core
+	#判断系统类型写入不同的启动文件
+	if [ -f /etc/rc.common ];then
+			#设为init.d方式启动
+			ln -sf $SBOX_DIR/sbox_rc /etc/init.d/sbox
+			chmod 755 /etc/init.d/sbox
+			rm -rf $SBOX_DIR/sbox_systemd
 	else
-		echo 无法写入环境变量！请检查安装权限！
-		exit 1
+		[ -w /etc/systemd/system ] && sysdir=/etc/systemd/system
+		[ -w /usr/lib/systemd/system ] && sysdir=/usr/lib/systemd/system
+		if [ -n "$sysdir" ];then
+			#设为systemd方式启动
+			ln -sf $SBOX_DIR/sbox_systemd $sysdir/sbox.service
+			sed -i "s#/etc/clash#${SBOX_DIR}#g" $SBOX_DIR/sbox_systemd
+			systemctl daemon-reload 2>/dev/null
+			rm -rf $SBOX_DIR/sbox_rc
+		else
+			$SBOX_DIR/sbox_ctl set sbox.boot=old #设为保守模式
+			rm -rf $SBOX_DIR/sbox_systemd
+			rm -rf $SBOX_DIR/sbox_rc
+		fi
 	fi
-
+	#存档版本号和url地址
+	$SBOX_DIR/sbox_ctl set sbox.version=$version
+	$SBOX_DIR/sbox_ctl set sbox.update_url=$url
+	$SBOX_DIR/sbox_ctl set sbox.systype=$systype
 	#华硕/Padavan额外设置
-	[ -n "$initdir" ] && {
-		sed -i '/ShellClash初始化/'d $initdir && touch $initdir && echo "$SBOX_DIR/start.sh init #ShellClash初始化脚本" >> $initdir
-		setconfig initdir $initdir
-		}
-	#小米镜像化OpenWrt额外设置
+	[ -n "$initdir" ] && sed -i '/SBox初始化/'d $initdir && touch $initdir && \
+	echo "$SBOX_DIR/start.sh init #SBox初始化" >> $initdir
+	#小米增强启动
 	if [ "$systype" = "mi_snapshot" ];then
-		chmod 755 $SBOX_DIR/misnap_init.sh
-		uci set firewall.ShellClash=include
-		uci set firewall.ShellClash.type='script'
-		uci set firewall.ShellClash.path='/data/clash/misnap_init.sh'
-		uci set firewall.ShellClash.enabled='1'
+		chmod 755 $SBOX_DIR/mi_adv.sh
+		uci set firewall.ShellBox=include
+		uci set firewall.ShellBox.type='script'
+		uci set firewall.ShellBox.path='/data/ShellBox/mi_adv.sh'
+		uci set firewall.ShellBox.enabled='1'
 		uci commit firewall
-		setconfig systype $systype
-	else
-		rm -rf $SBOX_DIR/misnap_init.sh
-		rm -rf $SBOX_DIR/clashservice
+		$SBOX_DIR/sbox_ctl set sbox.boot=mi_adv
 	fi
-	#删除临时文件
-	rm -rf /tmp/clashfm.tar.gz 
-	rm -rf $SBOX_DIR/clash.service
 }
 install(){
 echo -----------------------------------------------
@@ -104,8 +97,8 @@ $echo "\033[33m开始从服务器获取安装文件！\033[0m"
 echo -----------------------------------------------
 gettar
 $echo "\033[32m文件安装成功，正在初始化脚本！\033[0m"
+$SBOX_DIR/sbox_ctl init
 echo -----------------------------------------------
-init
 $echo "\033[32m ShellBox 安装成功!\033[0m"
 [ "$profile" = "~/.bashrc" ] && echo "请执行【source ~/.bashrc &> /dev/null】命令以加载环境变量！"
 echo -----------------------------------------------
@@ -119,11 +112,11 @@ if [ -n "$systype" ];then
 	[ "$systype" = "mi_snapshot" ] && dir=/data
 else
 	echo -----------------------------------------------
-	$echo "\033[33m安装ShellClash至少需要预留约1MB的磁盘空间\033[0m"	
+	$echo "\033[33m安装ShellBox至少需要预留约1MB的磁盘空间\033[0m"	
 	$echo " 1 在\033[32m/etc目录\033[0m下安装(适合root用户)"
 	$echo " 2 在\033[32m/usr/share目录\033[0m下安装(适合Linux设备)"
 	$echo " 3 在\033[32m当前用户目录\033[0m下安装(适合非root用户)"
-	$echo " 4 在\033[32m/data目录\033[0m下安装(适合小米路由器)"
+	$echo " 4 在\033[32m/data目录\033[0m下安装(适合小米路由设备)"
 	$echo " 5 手动设置安装目录"
 	$echo " 0 退出安装"
 	echo -----------------------------------------------
@@ -166,14 +159,23 @@ else
 fi
 }
 
+########################################################################################################
+[ -n "$(echo -e|grep e)" ] && echo=echo || echo='echo -e'
+[ -f "/etc/storage/started_script.sh" ] && systype=Padavan && initdir='/etc/storage/started_script.sh'
+[ -d "/jffs/scripts" ] && systype=asusrouter && initdir='/jffs/scripts/net-start'
+[ -f "/jffs/.asusrouter" ] && systype=asusrouter && initdir='/jffs/.asusrouter'
+[ -f "/data/etc/config/firewall" -a "$(dir_avail /etc)" = 0 ] && systype=mi_snapshot
+[ -z "$url" ] && url="https://cdn.jsdelivr.net/gh/juewuy/ShellBox@master"
+########################################################################################################
+
 #检查root权限
-if [ "$USER" != "root" -a -z "$systype" ];then
+[ "$USER" != "root" -a -z "$systype" ] && {
 	echo 当前用户:$USER
 	$echo "\033[31m请尽量使用root用户(务必用sudo -i提权)执行安装!\033[0m"
 	echo -----------------------------------------------
 	read -p "仍要安装？可能会产生未知错误！(1/0) > " res
 	[ "$res" != "1" ] && exit 1
-fi
+}
 
 #检查更新
 webget /tmp/ShellBox/version "$url/bin/version" echooff
