@@ -1,18 +1,22 @@
-#!/bin/sh 
+#!/bin/sh
+# Copyright (C) Juewuy
+
+alias sbox="$SBOX_DIR/sbox_ctl"
 
 APP=$2
-CPU_TYPE=$(sbox get core.cpu_type)
-CORE=$(sbox get $APP.core)
-PARA=$(sbox get $APP.para)
+ARCH=$(sbox get sbox.arch)
+ARCH_COMPA=$(sbox get sbox.arch_compa)
+PARA=$(sbox get $APP.para)			#内核执行的命令参数
 APP_DIR=$SBOX_DIR/tools/apps/$APP
-[ "$(sbox get core.lite)" = true ] && BIN_DIR=/tmp/ShellBox/bin/$APP || BIN_DIR=$APP_DIR
+BIN_DIR=$(sbox get sbox.bin_dir)	#内核文件存放目录
+[ "$BIN_DIR" = 0 ] && BIN_DIR=APP_DIR
 
 check_files(){
 	#检查并下载内核
 	if [ ! -f $BIN_DIR/$CORE ];then 
 		tmp_dir=/tmp/ShellBox/tmp/${CORE}
 		sbox log "Core of $APP is missing ! Downloading start !" 1
-		.webget.sh ${tmp_dir} /tools/apps/${APP}/bin/${CORE}_${CPU_TYPE} 2
+		sbox webget ${tmp_dir} /tools/apps/${APP}/bin/${CORE}_${ARCH} 2
 		if [ "$?" = 0 ];then
 			mv -f ${tmp_dir} $BIN_DIR/${CORE}
 		else
@@ -27,7 +31,7 @@ check_files(){
 		for file in $FILE_LIST;do
 			tmp_dir=/tmp/ShellBox/tmp/${file}
 			sbox log "Files : $file of $APP is missing ! Downloading start !" 1
-			.webget.sh ${tmp_dir} /tools/apps/${APP}/bin/${file} 2
+			sbox webget ${tmp_dir} /tools/apps/${APP}/bin/${file} 2
 			if [ "$?" = 0 ];then
 				if [ -n "$(echo $file|grep tar)" ];then
 					tar -zxvf ${tmp_dir} -C $BIN_DIR/

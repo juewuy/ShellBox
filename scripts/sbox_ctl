@@ -3,7 +3,7 @@
 
 #内置工具
 log(){
-	LOG_LV=$($0 get core.log_lv)
+	LOG_LV=$($0 get sbox.log_lv)
 	[ -z "$LOG_LV" ] && LOG_LV=0
 	# $3 代表崩溃日志，存放在安装目录，当LOG_LV等于2时，则一律存放
 	if [ -z "$3" -a "$LOG_LV" -lt 2 ];then
@@ -75,10 +75,70 @@ del(){
 list(){
 	[ -f $SBOX_DIR/config/$1.list ] && cat $SBOX_DIR/config/$1.list || return 1
 }
+ck_profile(){
+	#检查并设置环境变量
+	if [ -z "$SBOX_DIR" ];then
+		if [ -d "/etc/storage/ShellBox" ];then
+			SBOX_DIR=/etc/storage/ShellBox
+			while [ ! -w "/etc/profile" & "$i" -le 30 ];do {sleep 1&&i=$((i+1))};done
+			pro_file=/etc/profile
+			sed -i '' $profile #将软链接转化为一般文件
+		elif [ -d "/jffs/ShellBox" ];then
+			SBOX_DIR=/jffs/ShellBox
+			pro_file=/jffs/configs/profile.add
+		else
+			SBOX_DIR=$(cd $(dirname $0);pwd)
+			pro_file=/etc/profile
+		fi
+		sed -i 's/SBOX_DIR=*/d' $pro_file
+		sed -i 's/sbox=*/d' $pro_file
+		echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $pro_file
+		echo "alias sbox=\"$SBOX_DIR/sbox_ctl.sh\"" >> $pro_file
+	fi
+}
+ck_arch(){
+	#获取处理器架构
+	arch_name=$(uname -ms | tr ' ' '_' | tr '[A-Z]' '[a-z]')
+	[ -n "$(echo $arch_name | grep -E "linux.*armv.*")" ] && arch="armv5"
+	[ -n "$(echo $arch_name | grep -E "linux.*armv7.*")" ] && [ -n "$(cat /proc/cpuinfo | grep vfp)" ] && [ ! -d /jffs/clash ] && arch="armv7" && arch_compa="armv5"
+	[ -n "$(echo $arch_name | grep -E "linux.*aarch64.*|linux.*armv8.*")" ] && arch="armv8" && arch_compa="armv5"
+	[ -n "$(echo $arch_name | grep -E "linux.*86.*")" ] && arch="386"
+	[ -n "$(echo $arch_name | grep -E "linux.*86_64.*")" ] && arch="amd64" && arch_compa="386"
+	[ -n "$(echo $arch_name | grep -E "linux.*mips.*")" ] && arch="mips"
+	[ -n "$arch" ] && $0 set sbox.arch=$arch
+}
+webget(){
+	#参数【$1】代表目标路径，【$2】代表在线路径
+	#参数【$3】代表重试次数，【$4】代表输出显示
+	#参数【$5】不启用重定向，【$6】代表验证证书
 
+	[ -z "$3" ] && j=1 || j=$3
+	SERVER=$($0 get core.server)
+
+	for ((i=1;i<=j;i++));do
+		if type curl > /dev/null 2>&1;then
+			[ "$4" = "echooff" ] && progress='-s' || progress='-#'
+			[ "$5" = "rediroff" ] && redirect='' || redirect='-L'
+			[ "$6" = "skipceroff" ] && certificate='' || certificate='-k'
+			result=$(curl $agent -w %{http_code} --connect-timeout 3 $progress $redirect $certificate -o "$1" "${SERVER}$2")
+			[ "$result" -ge 200 -a "$result" -lt 300 ] && exit 0
+		else
+			if wget --version > /dev/null 2>&1;then
+				[ "$4" = "echooff" ] && progress='-q' || progress='-q --show-progress'
+				[ "$5" = "rediroff" ] && redirect='--max-redirect=0' || redirect=''
+				[ "$6" = "skipceroff" ] && certificate='' || certificate='--no-check-certificate'
+				timeout='--timeout=3 -t 2'
+			fi
+			[ "$4" = "echoon" ] && progress=''
+			[ "$4" = "echooff" ] && progress='-q'
+			wget $agent $progress $redirect $certificate $timeout -O "$1" "${SERVER}$2"
+			[ "$?" = 0 ] && exit 0
+		fi
+	done
+}
 #服务相关
 start(){
-	[ -n "$(pidof SBox_main)" ] && $0 stop #禁止多实例
+	[ -n "$(pidof sbox_core)" ] && $0 stop #禁止多实例
 	#还原定时任务
 	if [ -f $SBOX_DIR/config/cron_backup ];then
 		croncmd -l >> $SBOX_DIR/config/cron_backup
@@ -92,7 +152,7 @@ start(){
 	else
 		$0 daemon
 	fi
-	$0 set main.start_time=`date +%s`
+	$0 set sbox.start_time=`date +%s`
 }
 stop(){
 	#移除定时任务
@@ -104,35 +164,18 @@ stop(){
 	elif [ "$USER" = "root" ];then
 		systemctl stop SBox.service >/dev/null 2>&1
 	fi
-	PID=$(pidof SBox) && [ -n "$PID" ] &&  kill -9 $PID >/dev/null 2>&1
+	PID=$(pidof sbox_core) && [ -n "$PID" ] &&  kill -9 $PID >/dev/null 2>&1
 }
 daemon(){
-	cronset '#SBox守护进程' "*/1 * * * * $SBOX_DIR/SBox_main 1 #SBox守护进程"
+	cronset '#SBox守护进程' "*/1 * * * * $SBOX_DIR/sbox_core 1 #SBox守护进程"
+}
+boot(){
+	ck_profile
+	[ "$($0 get sbox.auto_start)" = false ] && cronset "SBox守护进程" || $0 start
 }
 init(){
-	[ -f "/etc/storage/started_script.sh" ]&& initdir='/etc/storage/started_script.sh'
-	[ -d "/jffs/scripts" ] && initdir='/jffs/scripts/net-start'
-	[ -f "/jffs/.asusrouter" ] && initdir='/jffs/.asusrouter'
-	#设置环境变量
-	if [ -d "/etc/storage/ShellBox" ];then
-		SBOX_DIR=/etc/storage/ShellBox
-		if [ -w "/opt/etc/profile" ];then
-			profile=/opt/etc/profile
-		else
-			profile=/etc/profile
-			sed -i '' $profile #将软链接转化为一般文件
-		fi
-	elif [ -d "/jffs/ShellBox" ];then
-		SBOX_DIR=/jffs/ShellBox
-		profile=/jffs/configs/profile.add
-	else
-		SBOX_DIR=$(cd $(dirname $0);pwd)
-		profile=/etc/profile
-	fi
-	echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $profile
-	echo "alias sbox=\"$SBOX_DIR/sbox_ctl.sh\"" >> $profile 
-	#启动ShellBox
-	[ "$($0 get core.auto_start)" = false ] && cronset "SBox守护进程" || $0 start
+	ck_profile
+	ck_arch
 }
 
 #命令相关
@@ -191,23 +234,26 @@ uninstall(){
 
 case "$1" in
 
-start)		start					;;
-stop)		stop					;;
-restart)	stop;start				;;
-daemon)		daemon					;;
-init)		init					;;
-list)		list $2					;;
-set)		site $2 $3				;;
-get)		get	$2 $3				;;
-del)		del	$2 $3				;;
-log)		log $2 $3 $4			;;
-cronset)	cronset $2 $3			;;
--h)			help					;;
--u)			uninstall				;;
-db)			$2 $3 $4				;;
--v)			get sbox.version		;;
--t)		$SH -x $SBOX_DIR/menu.sh	;;
-*)		$SH $SBOX_DIR/menu.sh		;;
+boot)		boot						;;
+start)		start						;;
+stop)		stop						;;
+restart)	stop;start					;;
+daemon)		daemon						;;
+init)		init						;;
+list)		list $2						;;
+set)		site $2 $3					;;
+get)		get	$2 $3					;;
+del)		del	$2 $3					;;
+log)		log $2 $3 $4				;;
+croncmd)	croncmd $2 					;;
+cronset)	cronset $2 $3				;;
+-h)			help						;;
+-u)			uninstall					;;
+db)			$2 $3 $4					;;
+-v)			get sbox.version			;;
+webget)		webget $2 $3 $4 $5 $6 $7	;;
+-t)			sh -x $SBOX_DIR/menu.sh		;;
+*)			sh $SBOX_DIR/menu.sh		;;
 
 esac
 

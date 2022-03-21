@@ -2,115 +2,72 @@
 # Copyright (C) Juewuy
 
 alias sbox="$SBOX_DIR/sbox_ctl"
-
+#脚本内置工具
 secho(){
-	[ -z "$2"] && echo "$1" || echo -e '\033["$2"m"$1"\033[0m'
+	[ -z "$2" ] && echo -e "$1" || echo -e "\033["$2"m"$1"\033[0m"
 }
 lang_select(){
 	echo -----------------------------------------------
-	echo "Please select language !"
+	secho "Welcome to ShellBox !" 32
+	secho "Please select your language first!" 33
+	echo -----------------------------------------------
 	i=1
 	for lang in $SBOX_DIR/lang/* ;do
-		lang_des=$(head -n +1 $lang)
-		echo $i $lang_des
+		lang_name=$(grep lang_name= $lang | awk -F "'" '{print $2}')
+		echo $i $lang_name
 		lang_all="$lang_all $lang"
 		i=$((i+1))
 	done
+	echo -----------------------------------------------
 	read -p "Iput the num : > " num
 	if [ -z "$num" ];then
-		LANG=en
+		lang_select
 	elif [ "$num" -ge 1 -a "$num" -lt "$i" ];then
 		LANG=$(echo $lang_all|awk '{print $"'$num'"}')
+		sbox set sbox.lang=$LANG
 	else
-		echo "Error Number ! Try again !"
+		echo -----------------------------------------------
+		secho "Error Number ! Try again !" 31
 		lang_select
 	fi
 }
+dir_avail(){
+	df -h $1 | awk '{ for(i=1;i<=NF;i++){ if(NR==1){ arr[i]=$i; }else{ arr[i]=arr[i]" "$i; } } } END{ for(i=1;i<=NF;i++){ print arr[i]; } }' | grep Ava | awk '{print $2}'
+}
 getconfig(){
-	version=$(sbox get core.version)
-	boot=$(sbox get core.boot)
-	auto_start=$(sbox get core.auto_start)
+	source $SBOX_DIR/config/sbox
 	#开机自启检测
 	if [ -f /etc/rc.common -a "$boot" != "mi_adv" ];then
 		[ -n "$(find /etc/rc.d -name '*ShellBox')" ] && auto_start=true || auto_start=false
 	elif [ -w /etc/systemd/system -o -w /usr/lib/systemd/system ];then
 		[ -n "$(systemctl is-enabled ShellBox.service 2>&1 | grep enable)" ] && auto_start=true || auto_start=false
 	fi
-	#获取运行状态
-	pid=$(pidof sbox_core)
-	if [ -n "$pid" ];then
-		run="\033[32m$Lang_running\033[0m"
-		VmRSS=`cat /proc/$pid/status|grep -w VmRSS|awk '{print $2,$3}'`
-		#获取运行时长
-		if [ -n "$start_time" ]; then 
-			time=$((`date +%s`-start_time))
-			day=$((time/86400))
-			[ "$day" = "0" ] && day='' || day="$day天"
-			time=`date -u -d @${time} +%H小时%M分%S秒`
-		fi
-	else
-		run="\033[31m没有运行（$redir_mod）\033[0m"
-		#检测系统端口占用
-		checkport
-	fi
-	#输出状态
-	echo -----------------------------------------------
-	secho "\033[30;46m欢迎使用ShellClash！\033[0m		版本：$versionsh_l"
-	secho "Clash服务"$run"，"$auto""
-	if [ -n "$PID" ];then
-		secho "当前内存占用：\033[44m"$VmRSS"\033[0m，已运行：\033[46;30m"$day"\033[44;37m"$time"\033[0m"
-	fi
-	secho "TG群：\033[36;4mhttps://t.me/ShellBoxfm\033[0m"
-	echo -----------------------------------------------
-	#检查新手引导
-	if [ -z "$userguide" ];then
-		setconfig userguide 1
-		source $ShellBoxdir/getdate.sh && userguide
-	fi
-	#检查执行权限
-	[ ! -x $ShellBoxdir/start.sh ] && chmod +x $ShellBoxdir/start.sh
 }
 errornum(){
 	echo -----------------------------------------------
 	secho $lang_errornum 31
 }
-#启动相关
-
-startover(){
-	secho "\033[32mShellBox服务已启动！\033[0m"
-	if [ -n "$hostdir" ];then
-		secho "请使用 \033[4;32mhttp://$host$hostdir\033[0m 管理内置规则"
-	else
-		secho "可使用 \033[4;32mhttp://ShellBox.razord.top\033[0m 管理内置规则"
-		secho "Host地址:\033[36m $host \033[0m 端口:\033[36m $db_port \033[0m"
-		secho "推荐前往更新菜单安装本地Dashboard面板，连接更稳定！\033[0m"
-	fi
-	if [ "$redir_mod" = "纯净模式" ];then
-		echo -----------------------------------------------
-		secho "其他设备可以使用PAC配置连接：\033[4;32mhttp://$host:$db_port/ui/pac\033[0m"
-		secho "或者使用HTTP/SOCK5方式连接：IP{\033[36m$host\033[0m}端口{\033[36m$mix_port\033[0m}"
-	fi
-}
-ShellBoxstart(){
-	#检查yaml配置文件
-	if [ ! -f "$yaml" ];then
-		echo -----------------------------------------------
-		secho "\033[31m没有找到配置文件，请先导入配置文件！\033[0m"
-		source $ShellBoxdir/getdate.sh && ShellBoxlink
-	fi
-	echo -----------------------------------------------
-	$ShellBoxdir/start.sh start
-	sleep 1
-	[ -n "$(pidof ShellBox)" ] && startover
-}
-checkrestart(){
-	echo -----------------------------------------------
-	secho "\033[32m检测到已变更的内容，请重启ShellBox服务！\033[0m"
-	echo -----------------------------------------------
-	read -p "是否现在重启ShellBox服务？(1/0) > " res
-	[ "$res" = 1 ] && ShellBoxstart
-}
 #功能相关
+setcpucore(){
+	cpucore_list="armv5 armv7 armv8 386 amd64 mipsle-softfloat mipsle-hardfloat mips-softfloat"
+	echo -----------------------------------------------
+	echo -e "\033[31m仅适合脚本无法正确识别核心或核心无法正常运行时使用！\033[0m"
+	echo -e "当前可供在线下载的处理器架构为："
+	echo $cpucore_list | awk -F " " '{for(i=1;i<=NF;i++) {print i" "$i }}'
+	echo -e "如果您的CPU架构未在以上列表中，请运行【uname -a】命令,并复制好返回信息"
+	echo -e "之后前往 t.me/clashfm 群提交或 github.com/juewuy/ShellClash 提交issue"
+	echo -----------------------------------------------
+	read -p "请输入对应数字 > " num
+	setcpucore=$(echo $cpucore_list | awk '{print $"'"$num"'"}' )
+	if [ -z "$setcpucore" ];then
+		echo -e "\033[31m请输入正确的处理器架构！\033[0m"
+		sleep 1
+		cpucore=""
+	else
+		cpucore=$setcpucore
+		setconfig cpucore $cpucore
+	fi
+}
 setport(){
 	source $ccfg
 	[ -z "$secret" ] && secret=未设置
@@ -232,122 +189,6 @@ setport(){
 		setport
 	fi	
 }
-setdns(){
-	[ -z "$dns_nameserver" ] && dns_nameserver='114.114.114.114, 223.5.5.5'
-	[ -z "$dns_fallback" ] && dns_fallback='1.0.0.1, 8.8.4.4'
-	[ -z "$ipv6_dns" ] && ipv6_dns=已开启
-	[ -z "$dns_redir" ] && dns_redir=未开启
-	[ -z "$dns_no" ] && dns_no=未禁用
-	echo -----------------------------------------------
-	secho "当前基础DNS：\033[32m$dns_nameserver\033[0m"
-	secho "fallbackDNS：\033[36m$dns_fallback\033[0m"
-	secho "多个DNS地址请用\033[30;47m“|”\033[0m或者\033[30;47m“, ”\033[0m分隔输入"
-	secho "\033[33m必须拥有本地根证书文件才能使用dot/doh类型的加密dns\033[0m"
-	echo -----------------------------------------------
-	secho " 1 修改\033[32m基础DNS\033[0m"
-	secho " 2 修改\033[36mfallback_DNS\033[0m"
-	secho " 3 \033[33m重置\033[0mDNS配置"
-	secho " 4 一键配置\033[32m加密DNS\033[0m"
-	secho " 5 ipv6_dns解析：	\033[36m$ipv6_dns\033[0m	————建议开启"
-	secho " 6 Dnsmasq转发：	\033[36m$dns_redir\033[0m	————用于解决dns劫持失败的问题"
-	secho " 7 禁用内置DNS：	\033[36m$dns_no\033[0m	————不明勿动"
-	secho " 0 返回上级菜单"
-	echo -----------------------------------------------
-	read -p "请输入对应数字 > " num
-	if [ -z "$num" ]; then 
-		errornum
-	elif [ "$num" = 1 ]; then
-		read -p "请输入新的DNS > " dns_nameserver
-		dns_nameserver=$(echo $dns_nameserver | sed 's#|#\,\ #g')
-		if [ -n "$dns_nameserver" ]; then
-			setconfig dns_nameserver \'"$dns_nameserver"\'
-			secho "\033[32m设置成功！！！\033[0m"
-		fi
-		setdns
-		
-	elif [ "$num" = 2 ]; then
-		read -p "请输入新的DNS > " dns_fallback
-		dns_fallback=$(echo $dns_fallback | sed 's/|/\,\ /g')
-		if [ -n "$dns_fallback" ]; then
-			setconfig dns_fallback \'"$dns_fallback"\' 
-			secho "\033[32m设置成功！！！\033[0m"
-		fi
-		setdns
-		
-	elif [ "$num" = 3 ]; then
-		dns_nameserver=""
-		dns_fallback=""
-		setconfig dns_nameserver
-		setconfig dns_fallback
-		secho "\033[33mDNS配置已重置！！！\033[0m"
-		setdns
-		
-	elif [ "$num" = 4 ]; then
-		$ShellBoxdir/start.sh webget /tmp/ssl_test https://www.baidu.com echooff rediron skipceroff
-		if [ "$？" = "1" ];then
-			echo -----------------------------------------------
-			if openssl version >/dev/null 2>&1;then
-				secho "\033[31m当前设备缺少本地根证书，请先安装证书！\033[0m"
-				source $ShellBoxdir/getdate.sh
-				setcrt
-			else
-				secho "\033[31m当前设备未安装OpenSSL，无法启用加密DNS，Linux系统请自行搜索安装方式！\033[0m"
-			fi
-		else
-			dns_nameserver='https://223.5.5.5/dns-query, https://doh.pub/dns-query, tls://dns.rubyfish.cn:853'
-			dns_fallback='tls://1.0.0.1:853, tls://8.8.4.4:853, https://doh.opendns.com/dns-query'
-			setconfig dns_nameserver \'"$dns_nameserver"\'
-			setconfig dns_fallback \'"$dns_fallback"\' 
-			secho "\033[32m设置成功！！！\033[0m"
-		fi
-		rm -rf /tmp/ssl_test
-		sleep 1
-		setdns
-		
-	elif [ "$num" = 5 ]; then
-		echo -----------------------------------------------
-		if [ "$ipv6_dns" = "未开启" ]; then 
-			secho "\033[32m开启成功！！\033[0m"
-			ipv6_dns=已开启
-		else
-			secho "\033[33m禁用成功！！\033[0m"
-			ipv6_dns=未开启
-		fi
-		sleep 1
-		setconfig ipv6_dns $ipv6_dns
-		setdns
-				
-	elif [ "$num" = 6 ]; then
-		echo -----------------------------------------------
-		if [ "$dns_redir" = "未开启" ]; then 
-			secho "\033[31m将使用OpenWrt中Dnsmasq插件自带的DNS转发功能转发DNS请求至ShellBox内核！\033[0m"
-			secho "\033[33m启用后将禁用本插件自带的iptables转发功能\033[0m"
-			dns_redir=已开启
-			secho "\033[32m已启用Dnsmasq转发DNS功能！！！\033[0m"
-			sleep 1
-		else
-			secho "\033[33m禁用成功！！\033[0m"
-			dns_redir=未开启
-		fi
-		sleep 1
-		setconfig dns_redir $dns_redir
-		setdns
-	
-	elif [ "$num" = 7 ]; then
-		echo -----------------------------------------------
-		if [ "$dns_no" = "未禁用" ]; then
-			secho "\033[31m仅限搭配其他DNS服务(比如dnsmasq、smartDNS)时使用！\033[0m"
-			dns_no=已禁用
-			secho "\033[32m已禁用内置DNS！！！\033[0m"
-		else
-			dns_no=未禁用
-			secho "\033[33m已启用内置DNS！！！\033[0m"
-		fi
-		sleep 1
-		setconfig dns_no $dns_no
-		setdns
-	fi
-}
 checkport(){
 	for portx in $dns_port $mix_port $redir_port $db_port ;do
 		if [ -n "$(netstat -ntul 2>&1 |grep \:$portx\ )" ];then
@@ -361,196 +202,6 @@ checkport(){
 			checkport
 		fi
 	done
-}
-macfilter(){
-	add_mac(){
-		echo -----------------------------------------------
-		echo 已添加的mac地址：
-		cat $ShellBoxdir/mac
-		echo -----------------------------------------------
-		secho "\033[33m序号   设备IP       设备mac地址       设备名称\033[32m"
-		cat $dhcpdir | awk '{print " "NR" "$3,$2,$4}'
-		secho "\033[0m-----------------------------------------------"
-		secho "手动输入mac地址时仅支持\033[32mxx:xx:xx:xx:xx:xx\033[0m的形式"
-		secho " 0 或回车 结束添加"
-		echo -----------------------------------------------
-		read -p "请输入对应序号或直接输入mac地址 > " num
-		if [ -z "$num" -o "$num" = 0 ]; then
-			i=
-		elif [ -n "$(echo $num | grep -E '^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$')" ];then
-			if [ -z "$(cat $ShellBoxdir/mac | grep -E "$num")" ];then
-				echo $num | grep -oE '^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$' >> $ShellBoxdir/mac
-			else
-				echo -----------------------------------------------
-				secho "\033[31m已添加的设备，请勿重复添加！\033[0m"
-			fi
-			add_mac
-		elif [ $num -le $(cat $dhcpdir | awk 'END{print NR}') 2>/dev/null ]; then
-			macadd=$(cat $dhcpdir | awk '{print $2}' | sed -n "$num"p)
-			if [ -z "$(cat $ShellBoxdir/mac | grep -E "$macadd")" ];then
-				echo $macadd >> $ShellBoxdir/mac
-			else
-				echo -----------------------------------------------
-				secho "\033[31m已添加的设备，请勿重复添加！\033[0m"
-			fi
-			add_mac
-		else
-			echo -----------------------------------------------
-			secho "\033[31m输入有误，请重新输入！\033[0m"
-			add_mac
-		fi
-	}
-	del_mac(){
-		echo -----------------------------------------------
-		if [ -z "$(cat $ShellBoxdir/mac)" ];then
-			secho "\033[31m列表中没有需要移除的设备！\033[0m"
-		else
-			secho "\033[33m序号   设备IP       设备mac地址       设备名称\033[0m"
-			i=1
-			for mac in $(cat $ShellBoxdir/mac); do
-				dev_ip=$(cat $dhcpdir | grep $mac | awk '{print $3}') && [ -z "$dev_ip" ] && dev_ip='000.000.00.00'
-				dev_mac=$(cat $dhcpdir | grep $mac | awk '{print $2}') && [ -z "$dev_mac" ] && dev_mac=$mac
-				dev_name=$(cat $dhcpdir | grep $mac | awk '{print $4}') && [ -z "$dev_name" ] && dev_name='未知设备'
-				secho " $i \033[32m$dev_ip \033[36m$dev_mac \033[32m$dev_name\033[0m"
-				i=$((i+1))
-			done
-			echo -----------------------------------------------
-			secho "\033[0m 0 或回车 结束删除"
-			read -p "请输入需要移除的设备的对应序号 > " num
-			if [ -z "$num" ]||[ "$num" -le 0 ]; then
-				n=
-			elif [ $num -le $(cat $ShellBoxdir/mac | wc -l) ];then
-				sed -i "${num}d" $ShellBoxdir/mac
-				echo -----------------------------------------------
-				secho "\033[32m对应设备已移除！\033[0m"
-				del_mac
-			else
-				echo -----------------------------------------------
-				secho "\033[31m输入有误，请重新输入！\033[0m"
-				del_mac
-			fi
-		fi
-	}
-	echo -----------------------------------------------
-	[ -z "$dhcpdir" ] && [ -f /var/lib/dhcp/dhcpd.leases ] && dhcpdir='/var/lib/dhcp/dhcpd.leases'
-	[ -z "$dhcpdir" ] && [ -f /var/lib/dhcpd/dhcpd.leases ] && dhcpdir='/var/lib/dhcpd/dhcpd.leases'
-	[ -z "$dhcpdir" ] && [ -f /tmp/dhcp.leases ] && dhcpdir='/tmp/dhcp.leases'
-	[ -z "$dhcpdir" ] && [ -f /tmp/dnsmasq.leases ] && dhcpdir='/tmp/dnsmasq.leases'
-	[ -z "$dhcpdir" ] && dhcpdir='/dev/null'
-	[ -z "$macfilter_type" ] && macfilter_type='黑名单' 
-	if [ "$macfilter_type" = "黑名单" ];then
-		macfilter_over='白名单'
-		macfilter_scrip='不'
-	else
-		macfilter_over='黑名单'
-		macfilter_scrip=''
-	fi
-	######
-	secho "\033[30;47m请在此添加或移除设备\033[0m"
-	secho "当前过滤方式为：\033[33m$macfilter_type模式\033[0m"
-	secho "仅列表内设备\033[36m$macfilter_scrip经过\033[0mClash内核"
-	if [ -n "$(cat $ShellBoxdir/mac)" ]; then
-		echo -----------------------------------------------
-		secho "当前已过滤设备为：\033[36m"
-		secho "\033[33m   设备IP       设备mac地址       设备名称\033[0m"
-		for mac in $(cat $ShellBoxdir/mac); do
-			dev_ip=$(cat $dhcpdir | grep $mac | awk '{print $3}') && [ -z "$dev_ip" ] && dev_ip='000.000.00.00'
-			dev_mac=$(cat $dhcpdir | grep $mac | awk '{print $2}') && [ -z "$dev_mac" ] && dev_mac=$mac
-			dev_name=$(cat $dhcpdir | grep $mac | awk '{print $4}') && [ -z "$dev_name" ] && dev_name='未知设备'
-			secho "\033[32m$dev_ip \033[36m$dev_mac \033[32m$dev_name\033[0m"
-		done
-		echo -----------------------------------------------
-	fi
-	secho " 1 切换为\033[33m$macfilter_over模式\033[0m"
-	secho " 2 \033[32m添加指定设备\033[0m"
-	secho " 3 \033[36m移除指定设备\033[0m"
-	secho " 4 \033[31m清空整个列表\033[0m"
-	secho " 0 返回上级菜单"
-	read -p "请输入对应数字 > " num
-	if [ -z "$num" ]; then
-		errornum
-	elif [ "$num" = 0 ]; then
-		i=
-	elif [ "$num" = 1 ]; then
-		macfilter_type=$macfilter_over
-		setconfig macfilter_type $macfilter_type
-		echo -----------------------------------------------
-		secho "\033[32m已切换为$macfilter_type模式！\033[0m"
-		macfilter
-	elif [ "$num" = 2 ]; then	
-		add_mac
-		macfilter
-	elif [ "$num" = 3 ]; then	
-		del_mac
-		macfilter
-	elif [ "$num" = 4 ]; then
-		:>$ShellBoxdir/mac
-		echo -----------------------------------------------
-		secho "\033[31m设备列表已清空！\033[0m"
-		macfilter
-	else
-		errornum
-		macfilter
-	fi
-}
-localproxy(){
-	[ -z "$local_proxy" ] && local_proxy='未开启'
-	[ -z "$local_type" ] && local_type='环境变量'
-	[ "$local_proxy" = "已开启" ] && proxy_set='禁用' || proxy_set='启用'
-	echo -----------------------------------------------
-	secho "\033[33m当前本机代理配置方式为：\033[32m$local_type\033[0m"
-	echo -----------------------------------------------
-	secho " 1 \033[36m$proxy_set本机代理\033[0m"
-	secho " 2 使用\033[32m环境变量\033[0m方式配置(部分应用可能无法使用)"
-	secho " 3 使用\033[32miptables增强模式\033[0m配置(仅支持Linux系统)"
-	secho " 0 返回上级菜单"
-	echo -----------------------------------------------
-	read -p "请输入对应数字 > " num
-	if [ -z "$num" ]; then 
-		errornum
-	elif [ "$num" = 0 ]; then
-		i=
-	elif [ "$num" = 1 ]; then
-		echo -----------------------------------------------
-		if [ "$local_proxy" = "未开启" ]; then 
-			if [ -n "$authentication" ] && [ "$authentication" != "未设置" ] ;then
-				secho "\033[32m检测到您已经设置了Http/Sock5代理密码，请先取消密码！\033[0m"
-				sleep 1
-				setport
-				localproxy
-			else
-				local_proxy=已开启
-				setconfig local_proxy $local_proxy
-				setconfig local_type $local_type
-				secho "\033[32m已经成功使用$local_type方式配置本机代理~\033[0m"
-				[ "$local_type" = "环境变量" ] && $ShellBoxdir/start.sh set_proxy $mix_port $db_port &&secho "\033[36m如未生效，请重新启动终端或重新连接SSH！\033[0m" && sleep 1
-				[ "$local_type" = "iptables增强模式" ] && $ShellBoxdir/start.sh start
-			fi		
-		else
-			local_proxy=未开启
-			setconfig local_proxy $local_proxy
-			setconfig local_type
-			$ShellBoxdir/start.sh stop
-			secho "\033[33m已经停用本机代理规则并停止ShellBox服务！！\033[0m"
-			[ "$local_type" = "环境变量" ] && secho "\033[36m如未生效，请重新启动终端或重新连接SSH！\033[0m" && sleep 1
-		fi
-
-	elif [ "$num" = 2 ]; then
-		local_type="环境变量"
-		setconfig local_type $local_type
-		localproxy
-	elif [ "$num" = 3 ]; then
-		if [ -w /etc/systemd/system/ShellBox.service -o -w /usr/lib/systemd/system/ShellBox.service -o -x /bin/su ];then
-			local_type="iptables增强模式"
-			setconfig local_type $local_type
-		else
-			secho "\033[31m当前设备无法使用增强模式！\033[0m"
-			sleep 1
-		fi
-		localproxy
-	else
-		errornum
-	fi	
 }
 ShellBoxcfg(){
 	set_redir_mod(){
@@ -992,82 +643,6 @@ EOF
 		errornum
 	fi
 }
-streaming(){
-	[ -z "$netflix_pre" ] && netflix_pre=未开启
-	[ -z "$disneyP_pre" ] && disneyP_pre=未开启
-	[ -z "$streaming_int" ] && streaming_int=24
-	netflix_dir=$ShellBoxdir/streaming/Netflix_Domains.list
-	disneyp_dir=$ShellBoxdir/streaming/Disney_Plus_Domains.list
-	####
-	secho "\033[30;46m欢迎使用流媒体预解析功能：\033[0m"
-	secho "\033[33m感谢OpenClash项目提供相关域名数据库！\033[0m"
-	secho "\033[31m修改后需重启服务！\033[0m"
-	echo -----------------------------------------------
-	secho " 1 预解析\033[36mNetflix域名  	\033[33m$netflix_pre\033[0m"
-	secho " 2 预解析\033[36mDisney+域名  	\033[33m$disneyP_pre\033[0m"
-	secho " 3 设置预解析间隔	\033[32m$streaming_int小时\033[0m"
-	secho " 4 更新本地\033[32m域名数据库\033[0m"
-	secho " 0 返回上级菜单" 
-	echo -----------------------------------------------
-	read -p "请输入对应数字 > " num
-	if [ -z "$num" ]; then
-		errornum
-	elif [ "$num" = 0 ]; then
-		i=
-	elif [ "$num" = 1 ]; then	
-		echo -----------------------------------------------
-		if [ "$netflix_pre" = "未开启" ] > /dev/null 2>&1; then
-			secho "\033[33m已启用Netflix域名预解析功能！！\033[0m"
-			netflix_pre=已开启
-			sleep 1
-		else
-			secho "\033[31m已停用Netflix域名预解析功能！！\033[0m"
-			[ -f "$netflix_dir" ] && rm -rf $netflix_dir
-			netflix_pre=未开启
-		fi
-		setconfig netflix_pre $netflix_pre
-		sleep 1
-		streaming
-	elif [ "$num" = 2 ]; then	
-		echo -----------------------------------------------
-		if [ "$disneyP_pre" = "未开启" ] > /dev/null 2>&1; then
-			secho "\033[33m已启用Disney+域名预解析功能！！\033[0m"
-			disneyP_pre=已开启
-			sleep 1
-		else
-			secho "\033[31m已停用Disney+域名预解析功能！！\033[0m"
-			[ -f "$disneyp_dir" ] && rm -rf $disneyp_dir
-			disneyP_pre=未开启
-		fi
-		setconfig disneyP_pre $disneyP_pre
-		sleep 1
-		streaming
-	elif [ "$num" = 3 ]; then	
-		echo -----------------------------------------------
-		read -p "请输入刷新间隔(1-24小时,不支持小数) > " num
-			if [ -z "$num" ]; then 
-				errornum
-			elif [ $num -gt 24 ] || [ $num -lt 1 ]; then 
-				errornum
-			else	
-				streaming_int=$num
-				setconfig streaming_int $streaming_int
-				secho "\033[32m设置成功！！！\033[0m"
-			fi
-			sleep 1
-			streaming
-	elif [ "$num" = 4 ]; then
-		[ -f "$netflix_dir" ] && rm -rf $netflix_dir
-		[ -f "$disneyp_dir" ] && rm -rf $disneyp_dir
-		echo -----------------------------------------------
-		secho "\033[32m本地文件已清理，将在下次刷新时自动更新数据库文件！！！\033[0m"
-		sleep 1
-		streaming
-	else
-		errornum
-		streaming
-	fi		
-}
 tools(){
 	ssh_tools(){
 		stop_iptables(){
@@ -1363,37 +938,341 @@ ShellBoxcron(){
 		errornum
 	fi
 }
-tools_service(){
-	
-}
+
 #主菜单
+welcome(){
+	mem_free=$((`free | grep Mem | awk '{print $4}'`/1000))
+	disk_sbox=$(du -sh $SBOX_DIR | awk '{print $1}')
+	disk_free=$(dir_avail $SBOX_DIR)
+	version=$(sbox get sbox.version)
+	start_time=$(sbox get sbox.start_time)
+	time=$((`date +%s`-start_time))
+	day=$((time/86400))
+	[ "$day" = "0" ] && day='' || day="$day $lang_day"
+	time=`date -u -d @${time} +%H-%M-%S`
+	#欢迎使用
+	echo -----------------------------------------------
+	secho "\033[30;46m$lang_welcome ShellBox！\033[0m			$version"
+	[ -n "$(pidof sbox_core)" ] && secho "ShellBox$lang_has_run：\033[46;30m"$day"\033[44;37m"$time"\033[0m"
+	secho "$lang_mem_free：${mem_free}M	$lang_disk_info：$disk_sbox/$disk_free"
+	secho "Telgram：\033[36;4mhttps://t.me/ShellBox\033[0m"
+	echo -----------------------------------------------	
+}
 menu(){
 	########################################
-	LANG=$(sbox get core.lang)
+	LANG=$(sbox get sbox.lang)
 	[ "$LANG" = 0 ] && lang_select
 	source $LANG
-	getconfig
+	welcome
 	########################################
-	secho " 1 $lang_tools_service"  32
-	secho " 2 $lang_tools_cron"		32
-	secho " 3 $lang_tools_local"	33
-	secho " 4 $lang_tools_online"	36
-	secho " 5 $lang_sbox_set"		
+	secho " 1 $lang_tools_service"  
+	secho " 2 $lang_tools_cron"		
+	secho " 3 $lang_tools_local"	
+	secho " 4 $lang_tools_online"	
+	secho " 5 $lang_set_sbox"		
 	secho " 6 $lang_about"
+	secho " 0 $lang_close_menu"	
 	echo -----------------------------------
-	secho " 0 $lang_close_menu"		31
-	read -p "请输入对应数字 > " num
+	read -p "$lang_input_num > " num
 	########################################
 	case "$num" in
 		0)			exit				;;
 		1)			tools_service		;;
 		2)			tools_cron			;;
 		3)			tools_local			;;
-		4)			sbox_set			;;
-		5)			tools_online		;;
+		4)			tools_online		;;
+		5)			set_sbox			;;
 		6)			about				;;
-		*)			errornum&&menu		;;
+		*)			errornum			;;
 	esac
+	[ "$num" = 0 ] || menu
+}
+#子菜单_插件相关
+tools_service(){
+	list=$SBOX_DIR/config/service.list
+	numbers=$(cat $list | wc -l)
+	if [ "$numbers" -gt 0 ];then
+		echo -----------------------------------
+		secho "正在运行的服务：" 
+		cat $list | awk '{print " "NR" "$1}'
+		echo -----------------------------------
+		secho " a $lang_tools_cron"  
+		secho " b $lang_tools_local"		
+		secho " c $lang_tools_online"
+		secho " 0 $lang_return_menu"	
+		echo -----------------------------------
+		read -p "$lang_input_norl > " norl
+		########################################	
+		case "$norl" in
+			[0-9])
+				if [ "$norl" -ge 1 -a "$norl" -le "$numbers" ];then
+					app=$(cat $list| sed -n "$norl"p)
+					set_tools $app
+				else
+					errornum
+				fi
+				;;
+			a)			tools_cron			;;
+			b)			tools_local			;;
+			c)			tools_online		;;
+			*)			errornum			;;
+		esac
+		[ "$norl" = 0 ] || tools_service
+	else
+		secho "没有正在运行的服务，已帮你跳转到插件列表！"	31
+		lang_tools_local
+	fi
+}
+tools_local(){
+	list=$SBOX_DIR/config/local.list
+	numbers=$(cat $list | wc -l)
+	if [ "$numbers" -gt 0 ];then
+		echo -----------------------------------
+		secho "已安装但未运行的插件：" 
+		cat $list | awk '{print " "NR" "$1}'
+		echo -----------------------------------
+		secho " a $lang_tools_service"  
+		secho " b $lang_tools_cron"		
+		secho " c $lang_tools_online"
+		secho " 0 $lang_return_menu"	
+		echo -----------------------------------
+		read -p "$lang_input_norl > " norl
+		########################################	
+		case "$norl" in
+			[0-9])
+				if [ "$norl" -ge 1 -a "$norl" -le "$numbers" ];then
+					tools=$(cat $list| sed -n "$norl"p)
+					set_tools $tools
+				else
+					errornum
+				fi
+				;;
+			a)			tools_service		;;
+			b)			tools_cron			;;
+			c)			tools_online		;;
+			*)			errornum			;;
+		esac
+		[ "$norl" = 0 ] || tools_local
+	else
+		secho "没有找到已安装插件，已帮你跳转至在线插件列表！"	31
+		tools_online
+	fi
+tools_online(){
+	update_url=$(sbox get sbox.update_url)
+	$SBOX_DIR/webget 
+	list=$SBOX_DIR/config/local.list
+	numbers=$(cat $list | wc -l)
+	if [ "$numbers" -gt 0 ];then
+		echo -----------------------------------
+		secho "已安装但未运行的插件：" 
+		cat $list | awk '{print " "NR" "$1}'
+		echo -----------------------------------
+		secho " a $lang_tools_service"  
+		secho " b $lang_tools_cron"		
+		secho " c $lang_tools_local"
+		secho " 0 $lang_return_menu"	
+		echo -----------------------------------
+		read -p "$lang_input_norl > " norl
+		########################################	
+		case "$norl" in
+			[0-9])
+				if [ "$norl" -ge 1 -a "$norl" -le "$numbers" ];then
+					tools=$(cat $list| sed -n "$norl"p)
+					set_tools $tools
+				else
+					errornum
+				fi
+				;;
+			a)			tools_service		;;
+			b)			tools_cron			;;
+			c)			tools_local		;;
+			*)			errornum			;;
+		esac
+		[ "$norl" = 0 ] || tools_online
+	else
+		secho "没有找到已安装插件，已帮你跳转至在线插件列表！"	31
+		lang_tools_local
+	fi
+set_tools(){
+	[ -n "$(pidof $1)" ] && start_stop=\033[31m$lang_stop || start_stop=\033[32m$lang_start
+	########################################
+	secho " 1 ${start_stop}$1\033[0m"  
+	secho " 2 $修改启动方式"		
+	secho " 3 $进阶功能设置"
+	secho " 4 $配置备份还原"	
+	secho " 5 $查看后台日志"
+	secho " 6 $更新ShellBox"	
+	secho " 9 $卸载ShellBox"
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		0)			exit				;;
+		1)			
+			[ -z "$(pidof sbox_core)" ] && sbox start || sbox stop
+			;;
+		2)			set_boot			;;
+		3)			advanced			;;
+		4)			backup				;;
+		5)			update				;;
+		6)			ck_log				;;
+		9)			sbox -u				;;
+		*)			errornum			;;
+	esac
+	[ "$num" = 0 ] || set_sbox
+}
+#子菜单_定时任务相关
+tools_cron(){
+	numbers=$(sbox croncmd -l | grep -i sbox | wc -l)
+	########################################
+	echo -----------------------------------
+	if [ "$numbers" -gt 0 ];then
+		secho "已添加的定时任务：" 33
+		sbox croncmd -l | grep -i sbox | awk -F '#' '{print " "NR" "$2}'
+	else
+		secho "你还没有添加ShellBox相关定时任务！" 	31
+	fi
+	echo -----------------------------------
+	secho " a $添加定时任务" 
+	secho " b $lang_tools_service"  
+	secho " c $lang_tools_local"		
+	secho " d $lang_tools_online"
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_norl > " norl
+	########################################	
+	case "$norl" in
+		[0-9])
+			if [ "$norl" -ge 1 -a "$norl" -le "$numbers" ];then
+				cron=$(cat $list| sed -n "$norl"p)
+				set_crons $cron
+			else
+				errornum
+			fi
+			;;
+		a)			set_crons			;;
+		b)			tools_service		;;
+		c)			tools_local			;;
+		d)			tools_online		;;
+		*)			errornum			;;
+	esac
+	[ "$norl" = 0 ] || tools_cron
+}
+
+#子菜单_sbox相关
+set_sbox(){
+	[ -n "$(pidof sbox_core)" ] && sbox_start=\033[31m$lang_stop || start_stop=\033[32m$lang_start
+	########################################
+	secho " 1 $sbox_startShellBox\033[0m"  
+	secho " 2 $修改启动方式"		
+	secho " 3 $进阶功能设置"
+	secho " 4 $配置备份还原"	
+	secho " 5 $查看后台日志"
+	secho " 6 $更新ShellBox"	
+	secho " 9 $卸载ShellBox"
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		0)			exit				;;
+		1)			
+			[ -z "$(pidof sbox_core)" ] && sbox start || sbox stop
+			;;
+		2)			set_boot			;;
+		3)			advanced			;;
+		4)			backup				;;
+		5)			update				;;
+		6)			ck_log				;;
+		9)			sbox -u				;;
+		*)			errornum			;;
+	esac
+	[ "$num" = 0 ] || set_sbox
+}
+set_boot(){
+	boot=$(sbox get sbox.boot)
+	
+	echo -----------------------------------
+	secho "当前启动状态：$boot" 
+	echo -----------------------------------
+	########################################
+	secho " 1 $使用守护进程"  
+	secho " 2 $使用定时任务"		
+	secho " 3 $小米增强启动"
+	secho " 4 $禁止开机启动"	
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		1)			set_boot			;;
+		2)			set_boot			;;
+		3)			advanced			;;
+		4)			backup				;;
+		*)			errornum			;;
+	esac
+	[ "$num" = 0 ] || set_boot
+}
+advanced(){
+	echo -----------------------------------
+	secho "当前启动状态：$boot" 
+	echo -----------------------------------
+	########################################
+	secho " 1 施工中"  
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		1)			errornum			;;
+		*)			errornum			;;
+	esac
+	[ "$num" = 0 ] || advanced
+}
+backup(){
+	########################################
+	secho " 1 施工中"  
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		1)			errornum			;;
+		*)			errornum			;;
+	esac
+	[ "$num" = 0 ] || advanced
+}
+update(){
+	########################################
+	secho " 1 施工中"  
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		1)			errornum			;;
+		*)			errornum			;;
+	esac
+	[ "$num" = 0 ] || advanced
+}
+ck_log(){
+	########################################
+	secho " 1 施工中"  
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		1)			errornum			;;
+		*)			errornum			;;
+	esac
+	[ "$num" = 0 ] || advanced
+}
+
+
+about(){
+	echo 111
 }
 
 case "$1" in
