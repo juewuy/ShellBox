@@ -4,53 +4,68 @@
 alias sbox="$SBOX_DIR/sbox_ctl"
 
 ARCH=$(sbox get sbox.arch)
+[ -z "$ARCH" ] && sbox ck_arch
 ARCH_COMPA=$(sbox get sbox.arch_compa)
-PARA=$(sbox get $APP.para)			#内核执行的命令参数
 APP_DIR=$SBOX_DIR/tools/apps/$APP
 BIN_DIR=$(sbox get sbox.bin_dir)	#内核文件存放目录
 [ "$BIN_DIR" = 0 ] && BIN_DIR=APP_DIR
 
 check_files(){
+	remove(){
+		rm -rf ${tmp_dir}
+		sbox log "Core of $APP downloading failed ! Stop starting !" 1
+		exit 1
+	}
 	update_url=$(sbox get sbox.update_url)
 	#检查并下载内核
-	if [ ! -f $BIN_DIR/$CORE ];then 
-		tmp_dir=/tmp/ShellBox/tmp/${CORE}
-		sbox log "Core of $APP is missing ! Downloading start !" 1
-		sbox webget ${tmp_dir} ${update_url}/tools/apps/${APP}/bin/${CORE}_${ARCH} 2
-		if [ "$?" = 0 ];then
-			mv -f ${tmp_dir} $BIN_DIR/${CORE}
-		else
-			rm -rf ${tmp_dir}
-			sbox log "Core of $APP downloading failed ! Stop starting !" 1
-			exit 1
+	core_file=$(cat $APP_DIR/sbox.config | grep -o "core_file" | awk -F '=' '{print $2}')
+	if [ -n "core_file" ];then
+		if [ ! -f $BIN_DIR/$core_file ];then
+			tmp_dir=/tmp/ShellBox/tmp/${CORE}
+			sbox log "Core of $APP is missing ! Downloading start !" 1
+			sbox webget ${tmp_dir} ${update_url}/tools/apps/${APP}/bin/${CORE}_${ARCH} 2
+			if [ "$?" = 0 ];then
+				mv -f ${tmp_dir} $BIN_DIR/${CORE}
+			else
+				if [ "$ARCH_COMPA" != 0 ];then
+					sbox webget ${tmp_dir} ${update_url}/tools/apps/${APP}/bin/${CORE}_${ARCH_COMPA}
+					[ "$?" = 0 ] && mv -f ${tmp_dir} $BIN_DIR/${CORE} || remove		
+				else
+					remove
+				fi
+			fi
 		fi
 	fi
 	#检查并下载依赖文件
-	FILE_LIST=$APP_DIR/file.list
-	if [ -s "FILE_LIST" ];then
-		for file in $FILE_LIST;do
-			tmp_dir=/tmp/ShellBox/tmp/${file}
-			sbox log "Files : $file of $APP is missing ! Downloading start !" 1
-			sbox webget ${tmp_dir} ${update_url}/tools/apps/${APP}/bin/${file} 2
-			if [ "$?" = 0 ];then
-				if [ -n "$(echo $file|grep tar)" ];then
-					tar -zxvf ${tmp_dir} -C $BIN_DIR/
-				elif [ -n "$(echo $file|grep lib)" ];then
-					i=
+	depend_file=$(cat $APP_DIR/sbox.config | grep -o "depend_file" | awk -F '=' '{print $2}')
+	if [ -n "depend_file" ];then
+		for file in $depend_file;do
+			if [ ! -f $BIN_DIR/$file ];then
+				tmp_dir=/tmp/ShellBox/tmp/${file}
+				sbox log "Depend_file : $file of $APP is missing ! Downloading start !" 1
+				sbox webget ${tmp_dir} ${update_url}/tools/apps/${APP}/bin/${file} 2
+				if [ "$?" = 0 ];then
+					if [ -n "$(echo $file|grep tar)" ];then
+						tar -zxvf ${tmp_dir} -C $BIN_DIR/
+					elif [ -n "$(echo $file|grep lib)" ];then
+						i=
+					else
+						mv -f ${tmp_dir} $BIN_DIR/${file}
+					fi
 				else
-					mv -f ${tmp_dir} $BIN_DIR/${file}
+					rm -rf ${tmp_dir}
+					sbox log "Depend_file : $file of $APPP downloading failed ! Stop starting !" 1
+					exit 1
 				fi
-			else
-				rm -rf ${tmp_dir}
-				sbox log "Files of $APP downloading failed ! Stop starting !" 1
-				exit 1
-			fi			
+			fi
 		done
 	fi			
 }
 
 start(){
 	APP=$1
+	PARA=$(sbox get $APP.para)			#命令参数，还得改
+	
 	[ -n "$(pidof "$CORE")" ] && sbox log "$APP is running !" && exit 1
 	[ -f /tmp/ShellBox/config/$APP ] && retry=$(sbox get $APP.retry /tmp/ShellBox/config) 
 	check_files

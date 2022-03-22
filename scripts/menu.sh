@@ -48,26 +48,6 @@ errornum(){
 	secho $lang_errornum 31
 }
 #功能相关
-setcpucore(){
-	cpucore_list="armv5 armv7 armv8 386 amd64 mipsle-softfloat mipsle-hardfloat mips-softfloat"
-	echo -----------------------------------------------
-	echo -e "\033[31m仅适合脚本无法正确识别核心或核心无法正常运行时使用！\033[0m"
-	echo -e "当前可供在线下载的处理器架构为："
-	echo $cpucore_list | awk -F " " '{for(i=1;i<=NF;i++) {print i" "$i }}'
-	echo -e "如果您的CPU架构未在以上列表中，请运行【uname -a】命令,并复制好返回信息"
-	echo -e "之后前往 t.me/clashfm 群提交或 github.com/juewuy/ShellClash 提交issue"
-	echo -----------------------------------------------
-	read -p "请输入对应数字 > " num
-	setcpucore=$(echo $cpucore_list | awk '{print $"'"$num"'"}' )
-	if [ -z "$setcpucore" ];then
-		echo -e "\033[31m请输入正确的处理器架构！\033[0m"
-		sleep 1
-		cpucore=""
-	else
-		cpucore=$setcpucore
-		setconfig cpucore $cpucore
-	fi
-}
 setport(){
 	source $ccfg
 	[ -z "$secret" ] && secret=未设置
@@ -1109,14 +1089,19 @@ tools_online(){
 }
 set_tools(){
 	[ -n "$(pidof $1)" ] && start_stop=\033[31m$lang_stop || start_stop=\033[32m$lang_start
+	desc=$(cat $APP_DIR/sbox.config | grep -o "desc_$LANG" | awk -F '=' '{print $2}')
 	########################################
+	echo -----------------------------------
+	secho "欢迎使用 \033[46;30m$1\033[0m !"	
+	echo "$desc"
+	echo -----------------------------------
 	secho " 1 ${start_stop}$1\033[0m"  
-	secho " 2 $修改启动方式"		
-	secho " 3 $进阶功能设置"
+	secho " 2 $基础功能设置"		
+	secho " 3 $lang_advanced_set"
 	secho " 4 $配置备份还原"	
 	secho " 5 $查看后台日志"
-	secho " 6 $更新ShellBox"	
-	secho " 9 $卸载ShellBox"
+	secho " 6 ${lang_update}$1"	
+	secho " 9 ${lang_uninstall}$1"
 	secho " 0 $lang_return_menu"	
 	echo -----------------------------------
 	read -p "$lang_input_num > " num
@@ -1160,12 +1145,12 @@ tools_cron(){
 		[0-9])
 			if [ "$norl" -ge 1 -a "$norl" -le "$numbers" ];then
 				cron=$(cat $list| sed -n "$norl"p)
-				set_crons $cron
+				set_cron $cron
 			else
 				errornum
 			fi
 			;;
-		a)			set_crons			;;
+		a)			set_cron			;;
 		b)			tools_service		;;
 		c)			tools_local			;;
 		d)			tools_online		;;
@@ -1173,7 +1158,10 @@ tools_cron(){
 	esac
 	[ "$norl" = 0 ] || tools_cron
 }
-
+#施工中
+set_cron(){
+	echo
+}
 #子菜单_sbox相关
 set_sbox(){
 	[ -n "$(pidof sbox_core)" ] && start_stop=\033[31m$lang_stop || start_stop=\033[32m$lang_start
@@ -1278,8 +1266,8 @@ advanced(){
 	########################################
 	secho " 1 启用小闪存模式"  
 	secho " 2 指定处理器架构" 
-	secho " 3 获取非兼容插件"
-	secho " 4 添加第三方插件" 
+	#secho " 3 获取非兼容插件"
+	#secho " 4 添加第三方插件" 
 	secho " 0 $lang_return_menu"	
 	echo -----------------------------------
 	read -p "$lang_input_num > " num
@@ -1297,30 +1285,85 @@ advanced(){
 }
 set_bindir(){
 	input_dir(){
-		read -p "$lang_input_fold > " bindir
-		[ ! -w $bindir -o "$(dir_avail $bindir)" = 0 ] && secho "没有目标目录写入权限！请重新输入！" 31 && input_dir
+		df -h
+		read -p "$lang_input_fold > " dir
+		if [ ! -w $dir -o "$(dir_avail $dir)" = 0 ];then
+			secho "没有目标目录写入权限！请重新输入！" 31
+			input_dir
+		else
+			bin_dir=$dir/sbox/tools/app
+		fi
 	}
 	echo -----------------------------------
-	secho "注意：插件内核加载到内存后，重启设备后将自动重新下载相关文件" 33
+	secho "注意：插件核心文件加载到内存后，重启设备后将自动重新下载相关文件" 33
 	echo -----------------------------------
 	########################################
-	secho " 1 将插件文件下载到内存/tmp"  
-	secho " 2 将插件文件下载到指定目录" 
-	secho " 3 将插件文件下载到安装目录"
+	secho " 1 将核心文件下载到内存/tmp"  
+	secho " 2 将核心文件下载到指定目录" 
+	secho " 3 将核心文件下载到安装目录"
 	secho " 0 $lang_return_menu"	
 	echo -----------------------------------
 	read -p "$lang_input_num > " num
 	########################################	
 	case "$num" in
-		1)			bindir=/tmp/ShellBox_$USER		;;
-		2)			input_dir			;;
-		3)			bindir=				;;
-		*)			errornum			;;
+		1)		bindir=/tmp/ShellBox_$USER/tools/app	;;
+		2)		input_dir					;;
+		3)		bindir=$SBOX_DIR			;;
+		*)		errornum					;;
 	esac
-	#还得做一下文件移动
+	#移动文件
+	if [ "$bindir" != "$SBOX_DIR" ];then
+		secho "$正在移动相关核心文件！"	
+		for dir in "$(ls $SBOX_DIR/tools)";do
+			[ -f $SBOX_DIR/tools/$dir/bin ] && mv -rf $SBOX_DIR/tools/$dir/bin $tmp_dir/tools/$dir
+		done
+	fi
 	sbox set sbox.bin_dir=bindir
 	[ "$num" = 0 ] || set_bindir	
 }
+set_arch(){
+	arch=$(sbox get sbox.arch)
+	arch_compa=$(sbox get sbox.arch_compa)
+	[ "$arch_compa" =0 ] && arch_compa=$arch
+	echo -----------------------------------
+	secho "当前核心架构为：$arch;兼容架构为：$arch_compa"
+	secho "兼容架构取决于当前核心架构，无法手动更改！"
+	secho "错误的架构可能导致应用无法运行，请谨慎更改！"	31
+	secho "适配请前往 https://github.com/juewuy/ShellBox/issues"	32
+	echo -----------------------------------
+	########################################
+	secho " 1 armv5" 
+	secho " 2 armv7(also armv5)" 
+	secho " 3 armv8(also armv5)" 
+	secho " 4 386"
+	secho " 5 x86_64(also 386)"
+	secho " 6 mips"
+	secho " 7 mipsle(also mips)"
+	secho " 0 $lang_return_menu"	
+	echo -----------------------------------
+	read -p "$lang_input_num > " num
+	########################################	
+	case "$num" in
+		1)		arch=armv5;arch_compa=armv5		;;
+		2)		arch=armv7;arch_compa=armv5		;;
+		3)		arch=armv8;arch_compa=armv5		;;
+		4)		arch=386;arch_compa=386			;;
+		5)		arch=x86_64;arch_compa=386		;;
+		6)		arch=mips;arch_compa=mips		;;
+		7)		arch=mipsle;arch_compa=mips		;;
+		*)		errornum						;;
+	esac
+	read -p "$确认更改？将移除已下载的内核文件！(1/0) > " res
+	if [ "$res" = 1 ];then 
+		bin_dir=get sbox.bin_dir
+		[ "$bin_dir" = 0 ] && bin_dir=$SBOX_DIR/tools/app
+		sbox set sbox.arch=arch
+		sbox set sbox.arch_compa=arch_compa
+		rm -rf /$bin_dir/*/bin
+	fi
+	[ "$num" = 0 ] || set_bindir	
+}
+#子菜单_其他功能	施工中
 backup(){
 	########################################
 	secho " 1 施工中"  
@@ -1360,8 +1403,6 @@ ck_log(){
 	esac
 	[ "$num" = 0 ] || advanced
 }
-
-
 about(){
 	echo 111
 }

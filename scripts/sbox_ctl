@@ -251,6 +251,7 @@ del)		del	$2 $3					;;
 log)		log $2 $3 $4				;;
 croncmd)	croncmd $2 					;;
 cronset)	cronset $2 $3				;;
+ck_arch)	ck_arch 					;;
 -h)			help						;;
 -u)			uninstall					;;
 db)			$2 $3 $4					;;
