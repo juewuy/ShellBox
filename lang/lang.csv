@@ -23,6 +23,7 @@ lang_online_list,正在获取在线插件列表……,Getting list of online plugins...
 lang_online_select,请选择想要安装的插件：,Please select a plugin which want to install: 
 lang_online_error,无法连接服务器！请更换安装源！,Server connect failed! Please change the server！
 lang_start,启动,Start
+lang_run,运行,Run
 lang_stop,停止,Stop
 lang_boot_type,修改启动方式,Select the boot method
 lang_advanced_set,进阶功能设置,Advanced settings
@@ -30,6 +31,7 @@ lang_backup,配置备份还原,Backup & Restore
 lang_view_logs,查看后台日志,View logs
 lang_update,更新,Update 
 lang_uninstall,卸载,Uninstall 
+lang_return_menu,返回上级菜单,Back to previous menu
 lang_boot_state,当前启动状态：,Current boot state: 
 lang_boot_system,作为系统进程,As system process
 lang_boot_cron,使用定时任务,Use crontab

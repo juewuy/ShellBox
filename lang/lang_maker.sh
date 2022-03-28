@@ -3,6 +3,7 @@
 
 CSV=lang.csv
 TMP=lang.tmp
+DIR=$(dirname $(pwd))
 [ ! -f $CSV ] && echo 语言基础配置文件丢失，已退出！ && exit 1
 #修正编码及换行符
 
@@ -19,7 +20,7 @@ files=$(head -n +1 $TMP | sed 's/.*文件名,//g' | sed 's/\,/\ /g')
 i=1
 
 for lang in $files;do
-	lang_dir=$(pwd)/scripts/lang/$lang
+	lang_dir=$DIR/scripts/lang/$lang
 	i=$((i+1))
 	echo 清理旧的【$lang】翻译文件
 	rm -rf $lang_dir
