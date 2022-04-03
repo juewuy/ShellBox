@@ -50,7 +50,7 @@ gettar(){
 	rm -rf $tmp_dir
 	#修饰文件
 	[ -n "$(ls -l /bin/sh|grep -oE 'dash|show|csh')" ] && {
-	sed -i "s#/bin/sh#/bin/bash#" $SBOX_DIR/sbox_ctl
+	sed -i "s#/bin/sh#/bin/bash#g" $SBOX_DIR/sbox_ctl
 	sed -i "s#/bin/sh#/bin/bash#" $SBOX_DIR/sbox_core
 	}
 	chmod 755 $SBOX_DIR/sbox_ctl $SBOX_DIR/sbox_core
@@ -78,7 +78,6 @@ gettar(){
 	#存档版本号和url地址
 	$SBOX_DIR/sbox_ctl set sbox.version=$version
 	$SBOX_DIR/sbox_ctl set sbox.update_url=$url
-	$SBOX_DIR/sbox_ctl set sbox.systype=$systype
 	#华硕/Padavan额外设置
 	[ -n "$initdir" ] && sed -i '/SBox初始化/'d $initdir && touch $initdir && \
 	echo "$SBOX_DIR/start.sh init #SBox初始化" >> $initdir

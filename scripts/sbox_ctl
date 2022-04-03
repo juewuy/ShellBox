@@ -94,7 +94,7 @@ ck_profile(){
 	fi
 }
 set_profile(){
-	sed -i 's/$1=*/d' $pro_file
+	sed -i 's/SBOX_DIR=*/d' $pro_file
 	sed -i 's/sbox=*/d' $pro_file
 	echo "export SBOX_DIR=\"$1\"" >> $pro_file
 	echo "alias sbox=\"$1/sbox_ctl.sh\"" >> $pro_file
