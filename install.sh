@@ -45,7 +45,7 @@ gettar(){
 	echo -----------------------------------------------
 	echo 开始解压文件！
 	mkdir -p $SBOX_DIR
-	tar -zxvf "$tmp_dir" -C $SBOX_DIR/
+	tar -zxvf $tmp_dir -C $SBOX_DIR/
 	[ "$?" != 0 ] && echo "文件解压失败,已退出！" && rm -rf $tmp_dir && exit 1
 	rm -rf $tmp_dir
 	#修饰文件
