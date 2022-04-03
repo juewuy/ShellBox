@@ -318,7 +318,7 @@ welcome(){
 	time=`date -u -d @${time} +%H-%M-%S`
 	#欢迎使用
 	echo -----------------------------------
-	secho "\033[30;46m$lang_welcome ShellBox！\033[0m	  v1.2.$version"
+	secho "\033[30;46m$lang_welcome ShellBox！\033[0m	  v$version"
 	[ -n "$(pidof sbox_core)" ] && secho "ShellBox$lang_has_run：\033[46;30m"$day"\033[44;37m"$time"\033[0m"
 	secho "$lang_mem_free：${mem_free}M	$lang_disk_info：$disk_sbox/$disk_free"
 	secho "Telgram：\033[36;4mhttps://t.me/ShellBox\033[0m"
@@ -490,10 +490,10 @@ set_tools(){
 	eval echo '$'"desc_$LANG"
 	echo -----------------------------------
 	secho " 1 ${start_stop}\033[0m $1"  
-	[ -n "$im_var1" ] && secho " 2 $基础功能设置"		
-	[ -n "$gen_var1" ] && secho " 3 $lang_advanced_set"
+	[ -n "$(cat $APP_DIR/sbox.config | grep '_menu=bas')" ] && secho " 2 $基础功能设置"		
+	[ -n "$(cat $APP_DIR/sbox.config | grep '_menu=adv')" ] && secho " 3 $lang_advanced_set"
 	[ -n "$cron_para1" ] && secho " 4 $计划任务配置"	
-	$config_online && secho " 5 $在线配置生成"
+	$config_online && secho " 5 $使用在线配置"
 	secho " 8 ${lang_update} $1"	
 	secho " 9 ${lang_uninstall} $1"
 	secho " 0 $lang_return_menu"	
@@ -501,12 +501,11 @@ set_tools(){
 	read -p "$lang_input_num > " num
 	########################################	
 	case "$num" in
-		0)			exit				;;
 		1)			
 			[ -z "$(pidof sbox_core)" ] && sbox start || sbox stop
 			;;
-		2)			basic_set			;;
-		3)			advanced			;;
+		2)			set_func $1 bas		;;
+		3)			set_func $1 adv		;;
 		4)			tools_cron			;;
 		5)			get_config_ol		;;
 		8)			update	$1			;;
@@ -514,6 +513,44 @@ set_tools(){
 		*)			errornum			;;
 	esac
 	[ -z "$num" -o "$num" = 0 ] || set_sbox
+}
+set_func(){
+	if [ -z "$(cat $APP_DIR/sbox.config | grep "_menu=$2")" ];then
+		secho "列表不存在，已返回！"  31
+		set_tools
+	else 
+		########################################
+		echo -----------------------------------
+		[ "$1" = "bas" ] && secho "欢迎使用 \033[46;30m$lang_bas_func\033[0m !" || secho "欢迎使用 \033[46;30m$lang_adv_func\033[0m !"
+		eval echo '$'"desc_$LANG"
+		echo -----------------------------------
+		i=1
+		while [ "$i" -le "$(cat $APP_DIR/sbox.config | grep -E 'var[0-9]=.*' | wc -l)" ];do
+			var_name=$(grep -Eo "^var$i=.*" $APP_DIR/sbox.config | awk -F "=" '{print $2}')
+			var_lang=$(grep -Eo "^var$i_lang_$LANG=.*" $APP_DIR/sbox.config | awk -F "=" '{print $2}')
+			[ -z "$var_lang" ] && var_lang=$(grep -Eo "^var$i_lang.*" $APP_DIR/sbox.config | awk -F "=" '{print $2}')
+			var_now=$(sbox get $1.$var_name)
+			[ -z "$var_now" ] && var_now=$(grep -Eo "^var$i_df=.*" $APP_DIR/sbox.config | awk -F "=" '{print $2}')
+			secho " $i $var_lang $var_now"
+		done
+		secho " 0 $lang_return_menu"	
+		echo -----------------------------------
+		read -p "$lang_input_num > " num
+		########################################	
+		case "$num" in
+			[0-9])	
+				var_type=$(grep -Eo "^var$i_type=.*" $APP_DIR/sbox.config | awk -F "=" '{print $2}')
+				input_var $var_name $var_type
+				var_alter=$(grep -Eo "^var$i_alter=.*" $APP_DIR/sbox.config | awk -F "=" '{print $2}')
+				$var_alter
+			;;
+			*)			errornum			;;
+		esac
+		[ -z "$num" -o "$num" = 0 ] || set_func	
+	fi
+}
+input_var(){
+	read 
 }
 get_tools(){
 echo
@@ -531,9 +568,7 @@ tools_cron(){
 	fi
 	echo -----------------------------------
 	secho " a $添加定时任务" 
-	secho " b $lang_tools_service"  
-	secho " c $lang_tools_local"		
-	secho " d $lang_tools_online"
+	secho " b $加载预设列表" 
 	secho " 0 $lang_return_menu"	
 	echo -----------------------------------
 	read -p "$lang_input_norl > " norl
@@ -548,9 +583,7 @@ tools_cron(){
 			fi
 			;;
 		a)			set_cron			;;
-		b)			tools_service		;;
-		c)			tools_local			;;
-		d)			tools_online		;;
+		b)			cron_preset			;;
 		*)			errornum			;;
 	esac
 	[ "$norl" = 0 ] || tools_cron
@@ -558,6 +591,9 @@ tools_cron(){
 #施工中
 set_cron(){
 	echo
+}
+cron_preset(){
+echo
 }
 #子菜单_sbox相关
 set_sbox(){

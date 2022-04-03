@@ -42,10 +42,11 @@ make_config(){
 	else
 		win2linux $CSV
 	fi
-	cat $TMP | awk -F ',' '{print $2"=""\""$3"\""}' | sed '1d' | sed '/=""/d' | sed 's/"yes"/true/g'  | sed 's/"no"/false/g' > scripts/sbox.config
-	rm -rf $TMP
+	cat $CSV | awk -F ',' '{print $2"=""\""$3"\""}' | sed '1d' | sed '/=""/d' | sed 's/"yes"/true/g'  | sed 's/"no"/false/g' > scripts/sbox.config
+	rm -rf $CSV
 }
 upx_cores(){
+	echo "UPX compressing！ 正在使用UPX压缩！"
 	type upx >/dev/null || sudo apt-get install -y upx
 	for cpu in armv5 armv7 armv8 386 amd64;do
 		upx ${tool_dir}/bin/${core}_${cpu}
