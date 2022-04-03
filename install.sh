@@ -104,6 +104,7 @@ $echo "\033[32m ShellBox 安装成功!\033[0m"
 echo -----------------------------------------------
 $echo "\033[33m输入\033[30;47m sbox \033[0;33m命令即可管理工具箱！！！\033[0m"
 echo -----------------------------------------------
+rm -rf /tmp/ShellBox
 }
 setdir(){
 if [ -n "$systype" ];then
@@ -178,7 +179,7 @@ fi
 }
 
 #检查更新
-mkdir /tmp/ShellBox
+mkdir -p /tmp/ShellBox
 webget /tmp/ShellBox/version "$url/bin/version" echooff
 [ "$?" = 0 ] && version=$(cat /tmp/ShellBox/version | grep "version" | awk -F "=" '{print $2}')
 rm -rf /tmp/ShellBox/version
