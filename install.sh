@@ -3,8 +3,8 @@
 
 ########################################################################################################
 					echo "***********************************************"
-					echo "**                 欢迎使用                  **"
-					echo "**               	 ShellBox ！     	       **"
+					echo "**                 Welcom to                 **"
+					echo "**                 ShellBox ！               **"
 					echo "**                             by  Juewuy    **"
 					echo "***********************************************"
 ########################################################################################################
@@ -49,8 +49,10 @@ gettar(){
 	[ "$?" != 0 ] && echo "文件解压失败,已退出！" && rm -rf $tmp_dir && exit 1
 	rm -rf $tmp_dir
 	#修饰文件
-	sed -i "s#/bin/sh#/bin/$shtype#" $SBOX_DIR/sbox_ctl
-	sed -i "s#/bin/sh#/bin/$shtype#" $SBOX_DIR/sbox_core
+	[ -n "$(ls -l /bin/sh|grep -oE 'dash|show|csh')" ] && {
+	sed -i "s#/bin/sh#/bin/bash#" $SBOX_DIR/sbox_ctl
+	sed -i "s#/bin/sh#/bin/bash#" $SBOX_DIR/sbox_core
+	}
 	chmod 755 $SBOX_DIR/sbox_ctl $SBOX_DIR/sbox_core
 	#判断系统类型写入不同的启动文件
 	if [ -f /etc/rc.common ];then
@@ -97,7 +99,7 @@ $echo "\033[33m开始从服务器获取安装文件！\033[0m"
 echo -----------------------------------------------
 gettar
 $echo "\033[32m文件安装成功，正在初始化脚本！\033[0m"
-$SBOX_DIR/sbox_ctl init
+$SBOX_DIR/sbox_ctl init $SBOX_DIR
 echo -----------------------------------------------
 $echo "\033[32m ShellBox 安装成功!\033[0m"
 [ "$profile" = "~/.bashrc" ] && echo "请执行【source ~/.bashrc &> /dev/null】命令以加载环境变量！"

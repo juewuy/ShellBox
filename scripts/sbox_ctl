@@ -90,11 +90,14 @@ ck_profile(){
 			SBOX_DIR=$(cd $(dirname $0);pwd)
 			pro_file=/etc/profile
 		fi
-		sed -i 's/SBOX_DIR=*/d' $pro_file
-		sed -i 's/sbox=*/d' $pro_file
-		echo "export SBOX_DIR=\"$SBOX_DIR\"" >> $pro_file
-		echo "alias sbox=\"$SBOX_DIR/sbox_ctl.sh\"" >> $pro_file
+		set_profile $SBOX_DIR
 	fi
+}
+set_profile(){
+	sed -i 's/$1=*/d' $pro_file
+	sed -i 's/sbox=*/d' $pro_file
+	echo "export SBOX_DIR=\"$1\"" >> $pro_file
+	echo "alias sbox=\"$1/sbox_ctl.sh\"" >> $pro_file
 }
 ck_arch(){
 	#获取处理器架构
@@ -174,8 +177,12 @@ boot(){
 	[ "$($0 get sbox.boot)" = disable ] && cronset "SBox守护进程" || $0 start
 }
 init(){
-	ck_profile
-	ck_arch
+	if [ -z "$1" ];then
+		ck_profile
+	else
+		set_profile $1
+		ck_arch
+	fi
 }
 
 #命令相关
@@ -238,27 +245,27 @@ uninstall(){
 
 case "$1" in
 
-boot)		boot						;;
-start)		start						;;
-stop)		stop						;;
-restart)	stop;start					;;
-daemon)		daemon						;;
-init)		init						;;
-list)		list $2						;;
-set)		site $2 $3					;;
-get)		get	$2 $3					;;
-del)		del	$2 $3					;;
-log)		log $2 $3 $4				;;
-croncmd)	croncmd $2 					;;
-cronset)	cronset $2 $3				;;
-ck_arch)	ck_arch 					;;
--h)			help						;;
--u)			uninstall					;;
-db)			$2 $3 $4					;;
--v)			get sbox.version			;;
-webget)		webget $2 $3 $4 $5 $6 $7	;;
--t)			sh -x $SBOX_DIR/menu.sh		;;
-*)			sh $SBOX_DIR/menu.sh		;;
+boot)		boot							;;
+start)		start							;;
+stop)		stop							;;
+restart)	stop&start						;;
+daemon)		daemon							;;
+init)		init $2							;;
+list)		list $2							;;
+set)		site $2 $3						;;
+get)		get	$2 $3						;;
+del)		del	$2 $3						;;
+log)		log $2 $3 $4					;;
+croncmd)	croncmd $2 						;;
+cronset)	cronset $2 $3					;;
+ck_arch)	ck_arch 						;;
+-h)			help							;;
+-u)			uninstall						;;
+db)			$2 $3 $4						;;
+-v)			get sbox.version				;;
+webget)		webget $2 $3 $4 $5 $6 $7		;;
+-t)			/bin/sh -x $SBOX_DIR/menu.sh	;;
+*)			/bin/sh $SBOX_DIR/menu.sh		;;
 
 esac
 
