@@ -182,7 +182,7 @@ fi
 
 #检查更新
 mkdir -p /tmp/ShellBox
-webget /tmp/ShellBox/version "$url/bin/version" echooff
+webget /tmp/ShellBox/version "$url/bin/version" 1 echooff
 [ "$?" = 0 ] && version=$(cat /tmp/ShellBox/version | grep "version" | awk -F "=" '{print $2}')
 rm -rf /tmp/ShellBox/version
 tarurl=$url/bin/ShellBox.tar.gz
