@@ -178,6 +178,7 @@ fi
 }
 
 #检查更新
+mkdir /tmp/ShellBox
 webget /tmp/ShellBox/version "$url/bin/version" echooff
 [ "$?" = 0 ] && version=$(cat /tmp/ShellBox/version | grep "version" | awk -F "=" '{print $2}')
 rm -rf /tmp/ShellBox/version
